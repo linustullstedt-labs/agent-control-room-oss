@@ -18,7 +18,7 @@ from pathlib import Path
 from .. import system
 from ..util import (HOME, FileCache, clip, drop_restatement, keep, now_ms, plain, read_fields, repo_name, subtitle_for,
                     tail_lines, within)
-from .base import REPLY_STATES, Agent, command_line, executable, first_cwd
+from .base import REPLY_STATES, Agent, executable, first_cwd
 
 CLAUDE_PROJECTS = HOME / ".claude" / "projects"
 CLAUDE_REGISTRY = HOME / ".claude" / "sessions"
@@ -163,7 +163,8 @@ def claude_agents_json():
         candidates.insert(0, cached)
     too_old, failure = [], None
     for binary in candidates:
-        proc = subprocess.run([binary, "agents", "--json"], capture_output=True, text=True, timeout=15,
+        proc = subprocess.run([binary, "agents", "--json"], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=15,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if proc.returncode == 0:
             _claude_bin.update(path=binary, at=time.time())
@@ -322,14 +323,13 @@ class ClaudeCode(Agent):
                 return True, "Opened {} in VS Code".format(session["name"])
             return True, "Raised the VS Code window for {}".format(os.path.basename(session["cwd"]))
         if client == "bg" and session.get("bgId") and re.fullmatch(r"[A-Za-z0-9_-]+", session["bgId"]):
-            ok, msg = system.run_in_terminal(session["cwd"] or str(HOME),
-                                             command_line([claude_binary() or "claude", "attach", session["bgId"]]))
+            ok, msg = system.run_in_terminal(session["cwd"] or str(HOME), [claude_binary() or "claude", "attach", session["bgId"]])
             return ok, "Attached to {} in a new terminal window".format(session["name"]) if ok else msg
         if client == "terminal" and session.get("pid"):
             return system.focus_terminal(session["pid"], session["name"])
         if client == "claude-app" and re.fullmatch(r"[0-9a-fA-F-]{8,64}", sid):
             proc = subprocess.run([claude_binary() or "claude", "--desktop", "--resume", sid], capture_output=True,
-                                  text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                  text=True, encoding="utf-8", errors="replace", timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if proc.returncode == 0:
                 return True, "Opened {} in the Claude app".format(session["name"])
             return False, "Could not open the session in the Claude app. Pick it there."
@@ -350,7 +350,8 @@ class ClaudeCode(Agent):
         bg = session.get("bgId")
         if session.get("client") != "bg" or not bg or not re.fullmatch(r"[A-Za-z0-9_-]+", bg):
             return False, "Only background sessions can be stopped from here."
-        proc = subprocess.run([claude_binary() or "claude", "stop", bg], capture_output=True, text=True, timeout=20,
+        proc = subprocess.run([claude_binary() or "claude", "stop", bg], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=20,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if proc.returncode != 0:
             return False, "claude stop failed: " + clip(proc.stderr or proc.stdout, 160)
@@ -384,7 +385,7 @@ class ClaudeCode(Agent):
         label = os.path.basename(folder)
         if target == "terminal":
             argv = [claude_binary() or "claude"] + ([prompt] if prompt else [])
-            ok, msg = system.run_in_terminal(folder, command_line(argv))
+            ok, msg = system.run_in_terminal(folder, argv)
             return (True, "Started a Claude agent in {} in a terminal.".format(label)) if ok else (False, msg)
         if target not in ("window", "new-window"):
             return False, "Choose where to open the agent."

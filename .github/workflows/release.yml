@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - {os: macos-14, label: macOS Apple Silicon}
-          - {os: macos-13, label: macOS Intel}
+          - {os: macos-15-intel, label: macOS Intel}
           - {os: windows-latest, label: Windows}
           - {os: ubuntu-22.04, label: Linux}
     steps:

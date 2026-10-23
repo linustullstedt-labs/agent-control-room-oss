@@ -21,7 +21,7 @@ from pathlib import Path
 from .. import system
 from ..settings import DATA_DIR
 from ..util import HOME, FileCache, clip, iso_to_ms, keep, plain, repo_name, same_path, tail_lines
-from .base import Agent, command_line, executable, first_cwd
+from .base import Agent, executable, first_cwd
 
 CODEX_SESSIONS = HOME / ".codex" / "sessions"
 CODEX_IPC = HOME / ".codex" / "ipc" / "ipc.sock"
@@ -215,6 +215,16 @@ def _codex_log():
     return DATA_DIR / "codex-exec.log"
 
 
+def _feed(proc, text):
+    """Hand the prompt over on stdin (codex reads it when the prompt argument is "-") and close it."""
+    try:
+        data = text if getattr(proc.stdin, "encoding", None) else text.encode("utf-8")
+        proc.stdin.write(data)
+        proc.stdin.close()
+    except (OSError, ValueError):
+        pass
+
+
 def headless_resume(thread, cwd, text):
     """Resume a thread no app has loaded, without any window: `codex exec resume` in the thread's folder, allowed to
     write there. The app shows the new turn the next time the thread is opened."""
@@ -228,8 +238,9 @@ def headless_resume(thread, cwd, text):
     log.flush()
     start = log.tell()
     proc = subprocess.Popen([binary, "exec", "--skip-git-repo-check", "-s", "workspace-write", "-C", folder,
-                             "resume", thread, text], stdout=log, stderr=log, stdin=subprocess.DEVNULL, cwd=folder,
+                             "resume", thread, "-"], stdout=log, stderr=log, stdin=subprocess.PIPE, cwd=folder,
                             start_new_session=not WINDOWS, creationflags=NO_WINDOW)
+    _feed(proc, text)
     for _ in range(12):  # a refused resume exits within a couple of seconds
         time.sleep(0.5)
         if proc.poll() is not None:
@@ -254,9 +265,10 @@ def start_headless(folder, prompt):
     log = open(_codex_log(), "a", encoding="utf-8")
     log.write("\n--- {} new thread\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
     log.flush()
-    proc = subprocess.Popen([binary, "exec", "--json", "--skip-git-repo-check", "-s", "workspace-write", "-C", folder, prompt],
-                            stdout=subprocess.PIPE, stderr=log, stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
-                            cwd=folder, start_new_session=not WINDOWS, creationflags=NO_WINDOW)
+    proc = subprocess.Popen([binary, "exec", "--json", "--skip-git-repo-check", "-s", "workspace-write", "-C", folder, "-"],
+                            stdout=subprocess.PIPE, stderr=log, stdin=subprocess.PIPE, text=True, encoding="utf-8",
+                            errors="replace", cwd=folder, start_new_session=not WINDOWS, creationflags=NO_WINDOW)
+    _feed(proc, prompt)
     found = queue.Queue()
 
     def drain():  # read Codex's event stream: report the thread id, keep the rest in the log
@@ -431,7 +443,7 @@ class Codex(Agent):
         from . import vscode
         label = os.path.basename(folder)
         if target == "terminal":
-            ok, msg = system.run_in_terminal(folder, command_line([codex_binary() or "codex"] + ([prompt] if prompt else [])))
+            ok, msg = system.run_in_terminal(folder, [codex_binary() or "codex"] + ([prompt] if prompt else []))
             return (True, "Started a Codex agent in {} in a terminal.".format(label)) if ok else (False, msg)
         if target == "app":
             query = {"path": folder}

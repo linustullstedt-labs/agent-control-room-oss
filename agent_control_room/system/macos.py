@@ -7,7 +7,7 @@ from pathlib import Path
 
 NAME = "macos"
 __all__ = ["NAME", "data_dir", "open_url", "vscode_cli", "open_in_vscode", "notify", "list_voices", "speak_command",
-           "play_command", "speak_env", "play_env", "run_in_terminal", "press_enter_in", "frontmost_app_id", "focus_app", "focus_terminal"]
+           "play_command", "speak_env", "play_env", "cancel_speech", "run_in_terminal", "press_enter_in", "frontmost_app_id", "focus_app", "focus_terminal"]
 
 VSCODE_APP_CLI = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
 
@@ -17,7 +17,7 @@ def data_dir():
 
 
 def osascript(script):
-    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     return proc.returncode == 0, (proc.stdout or proc.stderr).strip()
 
 
@@ -35,7 +35,8 @@ def open_in_vscode(folder):
 
 def notify(title, message):
     """Plain text only, passed as AppleScript strings via JSON quoting."""
-    script = "display notification {} with title {} sound name \"Glass\"".format(json.dumps(message), json.dumps(title))
+    script = "display notification {} with title {} sound name \"Glass\"".format(
+        json.dumps(message, ensure_ascii=False), json.dumps(title, ensure_ascii=False))
     subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
 
 
@@ -59,13 +60,17 @@ def speak_env(voice):
     return {}
 
 
+def cancel_speech():
+    pass
+
+
 def play_env(path):
     return {}
 
 
-def run_in_terminal(folder, command):
-    script = 'tell application "Terminal"\n do script {}\n activate\nend tell'.format(
-        json.dumps("cd {} && {}".format(_sh_quote(folder), command)))
+def run_in_terminal(folder, argv):
+    command = "cd {} && {}".format(_sh_quote(folder), " ".join(_sh_quote(a) for a in argv))
+    script = 'tell application "Terminal"\n do script {}\n activate\nend tell'.format(json.dumps(command, ensure_ascii=False))
     ok, msg = osascript(script)
     return ok, "" if ok else "Could not open Terminal: " + msg[:160]
 

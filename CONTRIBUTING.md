@@ -8,10 +8,10 @@ agent, tool or platform.
 ```sh
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 python -m pip install -e ".[app,build]"
-python -m agent_control_room --browser --port 7799
+python -m agent_control_room --browser --port 7799 --dev
 ```
 
-While running from a checkout, the room restarts itself when you save a `.py` file. The page reloads on its own.
+With `--dev` the room restarts itself when you save a `.py` file, and the page reloads on its own.
 
 Tests and lint, the same as CI runs on macOS, Windows and Linux:
 
@@ -57,8 +57,11 @@ Design rules that keep it trustworthy:
 4. **Never read secrets.** No key or token files, no token fields. Read named fields from JSON files, never whole files
    you then pass around.
 5. **Standard library only** for the room itself. `pywebview` is optional and only draws the window.
-6. **No outbound network calls** except the two the user asks for (update check, OpenAI voice).
-7. **Anything that edits another tool's settings** (like the hook installer) is a dry run by default, writes a
+6. **No outbound network calls** except the two the user asks for (update check, OpenAI voice). Calls to the room
+   itself bypass HTTP proxies.
+7. **Every API call carries the room's key** (`X-Control-Room` header). Only `/api/hello` works without it, and it
+   only proves the key (HMAC of a nonce) so a client can check it talks to the real room before sending anything.
+8. **Anything that edits another tool's settings** (like the hook installer) is a dry run by default, writes a
    timestamped backup first, and is safe to run twice.
 
 ## Add an agent

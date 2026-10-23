@@ -261,9 +261,16 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 0 5px; border-radius: 
 </div>
 
 <script>
+/* The room hands this page a secret key in its address (?t=...); every API call carries it, so other users and
+   programs on this computer cannot read or act on your sessions. */
+const TOKEN = (() => {
+  const t = new URLSearchParams(location.search).get('t') || '';
+  try { if (t) sessionStorage.setItem('acr-token', t); return t || sessionStorage.getItem('acr-token') || ''; } catch (e) { return t; }
+})();
+const H = { 'Content-Type': 'application/json', 'X-Control-Room': TOKEN };
 /* Report page errors to the room's log, so problems inside the app's own web view are visible. */
 function reportToRoom(kind, detail) {
-  try { fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' },
+  try { fetch('/api/client-log', { method: 'POST', headers: H,
     body: JSON.stringify({ kind, detail: String(detail).slice(0, 500), agent: navigator.userAgent.slice(0, 80) }) }); } catch (e) {}
 }
 window.addEventListener('error', e => reportToRoom('error', `${e.message} @${e.lineno}:${e.colno}`));
@@ -534,7 +541,8 @@ function tick() {
 
 async function refresh() {
   try {
-    const res = await fetch('/api/sessions', { cache: 'no-store' });
+    const res = await fetch('/api/sessions', { cache: 'no-store', headers: H });
+    if (res.status === 403) { locked(); return; }
     const snap = await res.json();
     if (pageVersion === null) pageVersion = snap.pageVersion;
     else if (snap.pageVersion && snap.pageVersion !== pageVersion && !typing()) {
@@ -570,8 +578,13 @@ async function refresh() {
   } catch (e) {
     const banner = $('#banner');
     banner.hidden = false;
-    banner.textContent = 'Cannot reach the control room server. Start it with: python3 tools/control_room_server.py';
+    banner.textContent = 'Cannot reach the room. Start Agent Control Room again.';
   }
+}
+function locked() {
+  const banner = $('#banner');
+  banner.hidden = false;
+  banner.textContent = 'This page needs the key the room opens it with. Open Agent Control Room from its app, or run: agent-control-room --browser';
 }
 
 let toastTimer;
@@ -583,7 +596,7 @@ function toast(msg, bad) {
 async function jump(key) {
   if (!key) return;
   try {
-    const res = await fetch('/api/jump', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify({ key }) });
+    const res = await fetch('/api/jump', { method: 'POST', headers: H, body: JSON.stringify({ key }) });
     const out = await res.json();
     toast(out.message, !out.ok);
     if (out.ok) collapse(key);
@@ -595,7 +608,7 @@ async function reply(key) {
   if (!text) return toast('Type a message first', true);
   const btn = document.querySelector('[data-reply] button'); if (btn) btn.disabled = true;
   try {
-    const res = await fetch('/api/reply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify({ key, text }) });
+    const res = await fetch('/api/reply', { method: 'POST', headers: H, body: JSON.stringify({ key, text }) });
     const out = await res.json();
     toast(out.message, !out.ok);
     if (out.ok) { drafts[key] = ''; collapse(key); refresh(); }
@@ -604,7 +617,7 @@ async function reply(key) {
 }
 
 async function post(path, body) {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify(body) });
+  const res = await fetch(path, { method: 'POST', headers: H, body: JSON.stringify(body) });
   return res.json();
 }
 async function decide(key, behavior) {
@@ -767,7 +780,7 @@ async function openLauncher(folder, agent) {
   $('#l-search').value = ''; $('#l-prompt').value = '';
   $('#l-search').focus();
   try {
-    const res = await fetch('/api/places', { cache: 'no-store' });
+    const res = await fetch('/api/places', { cache: 'no-store', headers: H });
     const v = await res.json();
     L.places = v.places; L.parents = v.parents; L.parent = L.parent || v.parents[0]?.path || null; L.agents = v.agents || [];
   } catch (e) { toast('Could not load folders from the server', true); }
@@ -858,7 +871,7 @@ async function launchAgent() {
   else body.folder = chosen.place.path;
   $('#l-go').disabled = true;
   try {
-    const res = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify(body) });
+    const res = await fetch('/api/launch', { method: 'POST', headers: H, body: JSON.stringify(body) });
     const out = await res.json();
     toast(out.message, !out.ok);
     if (out.ok) { closeLauncher(); L.targetTouched = false; }

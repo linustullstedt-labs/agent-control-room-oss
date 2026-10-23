@@ -63,6 +63,7 @@ class ServerTest(unittest.TestCase):
                        mock.patch.object(settings, "SETTINGS_FILE", data / "settings.json"),
                        mock.patch.object(server, "DATA_DIR", data),
                        mock.patch.object(server, "APPROVALS_FLAG", data / "approvals-on"),
+                       mock.patch.object(settings, "ROOM_FILE", data / "room.json"),
                        mock.patch.object(server, "AGENTS", [cls.fake, BrokenAgent()]),
                        mock.patch.dict(server.BY_VENDOR, {"fake": cls.fake}),
                        mock.patch.object(agents, "AGENTS", [cls.fake])]
@@ -79,14 +80,15 @@ class ServerTest(unittest.TestCase):
         for p in cls.patches:
             p.stop()
 
-    def get(self, path):
-        with urllib.request.urlopen(self.url + path, timeout=5) as r:
+    def get(self, path, key=True):
+        req = urllib.request.Request(self.url + path, headers={"X-Control-Room": self.room.token} if key else {})
+        with urllib.request.urlopen(req, timeout=5) as r:
             return json.load(r)
 
     def post(self, path, body, header=True, host=None):
         headers = {"Content-Type": "application/json"}
         if header:
-            headers["X-Control-Room"] = "1"
+            headers["X-Control-Room"] = self.room.token if header is True else header
         if host:
             headers["Host"] = host
         req = urllib.request.Request(self.url + path, data=json.dumps(body).encode(), method="POST", headers=headers)
@@ -118,6 +120,44 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.get("api/sessions")["sessions"], [])
         server.save_room_settings({"closed": {}})
         self.assertEqual(len(self.get("api/sessions")["sessions"]), 1)
+
+    def test_every_api_call_needs_the_key(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            self.get("api/sessions", key=False)
+        self.assertEqual(ctx.exception.code, 403)
+        self.assertEqual(self.post("api/reply", {"key": "fake:1", "text": "x"}, header="1")[0], 403)
+        self.assertEqual(self.post("api/client-log", {"kind": "x"}, header=False)[0], 403)
+
+    def test_hello_proves_the_key_without_sending_it(self):
+        answer = self.get("api/hello?n=abc", key=False)
+        self.assertEqual(answer["proof"], server.proof(self.room.token, "abc"))
+        self.assertNotIn(self.room.token, json.dumps(answer))
+
+    def test_room_file_is_private_and_the_hook_trusts_only_the_real_room(self):
+        from agent_control_room.hooks import permission
+        info = settings.read_room_file()
+        self.assertEqual((info["port"], info["token"]), (self.port, self.room.token))
+        if os.name == "posix":
+            self.assertEqual(os.stat(settings.ROOM_FILE).st_mode & 0o777, 0o600)
+        self.assertTrue(permission.find_room())
+        settings.write_room_file({"port": self.port, "token": "not-the-key"})
+        try:
+            self.assertFalse(permission.find_room())
+        finally:
+            settings.write_room_file({"port": self.port, "token": self.room.token})
+
+    def test_approval_waits_only_for_a_session_the_room_shows(self):
+        self.assertIsNone(self.post("api/permission", {"session_id": "unknown", "tool_name": "Bash"})[1]["id"])
+        server.APPROVALS.pending.clear()
+        ROW_ID = "s-1"
+        with mock.patch.dict(ROW, {"sessionId": ROW_ID}):
+            self.room.poller.poll_once()
+            rid = self.post("api/permission", {"session_id": ROW_ID, "tool_name": "Bash", "tool_input": {"command": "ls"}})[1]["id"]
+            self.assertTrue(rid)
+            row = self.get("api/sessions")["sessions"][0]
+            self.assertEqual((row["state"], row["approvalId"]), ("needs-permission", rid))
+        server.APPROVALS.pending.clear()
+        self.room.poller.poll_once()
 
     def test_page_is_served(self):
         with urllib.request.urlopen(self.url, timeout=5) as r:

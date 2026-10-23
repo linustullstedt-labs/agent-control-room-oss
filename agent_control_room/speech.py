@@ -211,6 +211,10 @@ class Speaker:
             proc, self.proc = self.proc, None
         if proc and proc.poll() is None:
             proc.terminate()
+            try:
+                system.cancel_speech()
+            except Exception:
+                pass
 
     def speak(self, lines, key=None, engine="system"):
         self.stop()
@@ -254,11 +258,20 @@ class Speaker:
             with self.lock:
                 if run != self.run:
                     return
-                self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
-                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                             env=dict(os.environ, **env) if env else None,
-                                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                try:
+                    self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                                 env=dict(os.environ, **env) if env else None,
+                                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                except OSError as exc:
+                    self.proc = None
+                    failed = exc
+                else:
+                    failed = None
                 proc = self.proc
+            if failed:
+                self._fail("could not start {}: {}".format(argv[0], failed))
+                break
             if stdin is not None:
                 try:
                     proc.communicate(stdin.encode("utf-8"))

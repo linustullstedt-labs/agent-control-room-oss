@@ -3,8 +3,11 @@
 Sessions come from the agent plug-ins in agents/ (Claude Code and Codex today). Everything that differs between
 macOS, Windows and Linux lives in system/. The server binds 127.0.0.1 only and never reads token fields.
 """
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import sqlite3
 import sys
 import threading
@@ -17,7 +20,8 @@ from . import __version__, system
 from .agents import AGENTS, BY_VENDOR
 from .agents.claude_code import tool_summary
 from .agents.vscode import open_windows
-from .settings import APPROVALS_FLAG, DATA_DIR, ignored_folders, is_ignored, room_settings, save_room_settings
+from .settings import (APPROVALS_FLAG, DATA_DIR, ignored_folders, is_ignored, local_opener, read_room_file, room_settings,
+                       save_room_settings, write_room_file)
 from .speech import SPEAKER, reply_speech
 from .util import FOLDER_NAME, HOME, clip, log, now_ms, repo_name, same_path, within
 
@@ -240,7 +244,8 @@ def launch(body):
             return False, "{} already exists. Pick it from the list instead.".format(name)
         os.mkdir(folder)
         try:
-            subprocess.run(["git", "init", "-q", folder], check=False, timeout=20)
+            subprocess.run(["git", "init", "-q", folder], check=False, timeout=20, capture_output=True,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except (OSError, subprocess.SubprocessError):
             pass  # no git: the folder still works, just without a repository
         _places["value"] = None
@@ -402,7 +407,7 @@ def check_updates():
 
 POST_ROUTES = {"/api/jump", "/api/reply", "/api/launch", "/api/permission", "/api/permission/expire", "/api/decide",
                "/api/settings", "/api/stop", "/api/close", "/api/update/check", "/api/hook/install", "/api/hook/remove",
-               "/api/speak", "/api/quit"}
+               "/api/speak", "/api/quit", "/api/client-log"}
 
 
 def voice_setting():
@@ -419,8 +424,15 @@ def snapshot_for_page(poller):
                 voice=voice_setting(), speechError=SPEAKER.error)
 
 
-def make_handler(poller, port, on_quit):
+def proof(token, nonce):
+    return hmac.new(token.encode(), str(nonce).encode(), hashlib.sha256).hexdigest()
+
+
+def make_handler(poller, port, on_quit, token):
     allowed_hosts = {"127.0.0.1:{}".format(port), "localhost:{}".format(port)}
+
+    def authorized(headers):
+        return hmac.compare_digest(headers.get("X-Control-Room") or "", token)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -445,7 +457,15 @@ def make_handler(poller, port, on_quit):
         def do_GET(self):
             if not self.guard():
                 return
-            if self.path in ("/", "/index.html"):
+            route = urllib.parse.urlparse(self.path).path
+            if route == "/api/hello":
+                nonce = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("n", [""])[0][:128]
+                self.send(200, {"room": "agent-control-room", "version": __version__, "proof": proof(token, nonce)})
+                return
+            if route.startswith("/api/") and not authorized(self.headers):
+                self.send(403, {"error": "missing or wrong key"})
+                return
+            if route in ("/", "/index.html"):
                 self.send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/icon.svg":
                 self.send(200, (WEB / "icon.svg").read_bytes(), "image/svg+xml")
@@ -470,12 +490,12 @@ def make_handler(poller, port, on_quit):
         def do_POST(self):
             if not self.guard():
                 return
+            if not authorized(self.headers):
+                self.send(403, {"error": "missing or wrong key"})
+                return
             if self.path == "/api/client-log":
                 log("[page] " + clip(json.dumps(self.body()), 600))
                 self.send(200, {"ok": True})
-                return
-            if self.headers.get("X-Control-Room") != "1":
-                self.send(403, {"error": "missing header"})
                 return
             if self.path not in POST_ROUTES:
                 self.send(404, {"error": "not found"})
@@ -511,6 +531,10 @@ def make_handler(poller, port, on_quit):
             if path == "/api/update/check":
                 return dict(check_updates())
             if path == "/api/permission":
+                with poller.lock:
+                    shown = any(s.get("sessionId") == body.get("session_id") for s in poller.snapshot["sessions"])
+                if not shown or is_ignored(body.get("cwd")):
+                    return {"id": None}
                 return {"id": APPROVALS.add(body)["id"]}
             if path == "/api/permission/expire":
                 APPROVALS.drop(str(body.get("id")))
@@ -605,12 +629,19 @@ def page_version():
 
 def room_is_running(url):
     """True when the port is held by an Agent Control Room, not some other program."""
-    import urllib.request
     try:
-        with urllib.request.urlopen(url + "api/version", timeout=2) as resp:
-            return "version" in json.load(resp)
+        with local_opener().open(url + "api/hello?n=ping", timeout=2) as resp:
+            return json.load(resp).get("room") == "agent-control-room"
     except Exception:
         return False
+
+
+def running_page_url(port):
+    """The page address (with key) of the room already running on port, from its room file."""
+    info = read_room_file()
+    if info.get("port") == port and info.get("token"):
+        return "http://127.0.0.1:{}/?t={}".format(port, info["token"])
+    return "http://127.0.0.1:{}/".format(port)
 
 
 def ask_running_room_to_quit(port):
@@ -619,10 +650,11 @@ def ask_running_room_to_quit(port):
     url = "http://127.0.0.1:{}/".format(port)
     if not room_is_running(url):
         return False
+    info = read_room_file()
     req = urllib.request.Request(url + "api/quit", data=b"{}", method="POST",
-                                 headers={"Content-Type": "application/json", "X-Control-Room": "1"})
+                                 headers={"Content-Type": "application/json", "X-Control-Room": info.get("token") or ""})
     try:
-        urllib.request.urlopen(req, timeout=3).read()
+        local_opener().open(req, timeout=3).read()
     except Exception:
         pass
     for _ in range(50):
@@ -633,7 +665,7 @@ def ask_running_room_to_quit(port):
 
 
 def watch_and_reload(paths):
-    """Developer convenience: restart in place when the code changes (not in packaged apps). Waits while an
+    """Developer mode (--dev): restart in place when the code changes. Waits while an
     approval is pending, and keeps the running version when the new code does not compile."""
     def stamp():
         return {p: p.stat().st_mtime_ns for p in paths if p.exists()}
@@ -661,7 +693,9 @@ class Room:
 
     def __init__(self, port=DEFAULT_PORT):
         self.port = port
+        self.token = secrets.token_urlsafe(32)  # new for every start
         self.url = "http://127.0.0.1:{}/".format(port)
+        self.page_url = "{}?t={}".format(self.url, self.token)
         self.poller = Poller(Store(DATA_DIR / "control-room.sqlite3"))
         self.httpd = None
 
@@ -669,10 +703,11 @@ class Room:
         """Bind and start serving in the background. Raises OSError when the port is taken."""
         self.poller.poll_once()
         self.poller.start()
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), make_handler(self.poller, self.port, self.stop))
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), make_handler(self.poller, self.port, self.stop, self.token))
         self.httpd.daemon_threads = True
+        write_room_file({"port": self.port, "token": self.token, "pid": os.getpid(), "version": __version__})
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-        if not getattr(sys, "frozen", False):
+        if os.environ.get("AGENT_CONTROL_ROOM_DEV") == "1" and not getattr(sys, "frozen", False):
             code = sorted(Path(__file__).resolve().parent.rglob("*.py"))
             threading.Thread(target=watch_and_reload, args=(code,), daemon=True).start()
         log("Agent Control Room {} on {}".format(__version__, self.url))

@@ -20,14 +20,22 @@ MARKER = "--hook permission"
 HOOK_TIMEOUT = 660  # seconds; the hook itself gives up after 600 and lets the normal dialog show
 
 
+def quote(path):
+    """Quote a path for the shell Claude Code runs hooks in: sh on macOS/Linux, cmd or bash on Windows."""
+    if sys.platform.startswith("win"):
+        return '"' + str(path) + '"'  # Windows paths cannot contain quotes
+    import shlex
+    return shlex.quote(str(path))
+
+
 def hook_command():
     """How Claude Code should start the hook: the packaged app itself, or this Python with the package."""
     if getattr(sys, "frozen", False):
         exe = Path(sys.executable)
         # Windows: the window app has no stdout, so the hook runs the console build that ships next to it
         cli = exe.with_name("agent-control-room.exe")
-        return "{} {}".format(json.dumps(str(cli if sys.platform.startswith("win") and cli.exists() else exe)), MARKER)
-    return "{} -m agent_control_room {}".format(json.dumps(sys.executable), MARKER)
+        return "{} {}".format(quote(cli if sys.platform.startswith("win") and cli.exists() else exe), MARKER)
+    return "{} -m agent_control_room {}".format(quote(sys.executable), MARKER)
 
 
 def ours(group):

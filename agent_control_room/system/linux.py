@@ -9,7 +9,7 @@ from pathlib import Path
 
 NAME = "linux"
 __all__ = ["NAME", "data_dir", "open_url", "vscode_cli", "open_in_vscode", "notify", "list_voices", "speak_command",
-           "play_command", "speak_env", "play_env", "run_in_terminal", "press_enter_in", "frontmost_app_id",
+           "play_command", "speak_env", "play_env", "cancel_speech", "run_in_terminal", "press_enter_in", "frontmost_app_id",
            "focus_app", "focus_terminal"]
 
 TERMINALS = (  # (program, args before the command); the command runs through `sh -c` so the window stays useful
@@ -86,16 +86,22 @@ def speak_env(voice):
     return {}
 
 
+def cancel_speech():
+    if shutil.which("spd-say"):
+        subprocess.run(["spd-say", "-C"], capture_output=True, timeout=5)
+
+
 def play_env(path):
     return {}
 
 
-def run_in_terminal(folder, command):
+def run_in_terminal(folder, argv):
+    # "$@" runs argv exactly as given (no re-quoting); the shell afterwards keeps the window useful
+    keep_open = ["sh", "-c", '"$@"; exec "${SHELL:-sh}"', "sh"] + list(argv)
     for program, args in TERMINALS:
         if shutil.which(program):
             try:
-                subprocess.Popen([program] + args + ["sh", "-c", command + "; exec \"${SHELL:-sh}\""], cwd=folder,
-                                 start_new_session=True)
+                subprocess.Popen([program] + args + keep_open, cwd=folder, start_new_session=True)
                 return True, ""
             except OSError as exc:
                 return False, "Could not open {}: {}".format(program, exc)

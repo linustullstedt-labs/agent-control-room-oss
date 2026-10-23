@@ -24,7 +24,7 @@ class InterfaceTest(unittest.TestCase):
             self.assertEqual(linux.data_dir(), Path("/x/share/agent-control-room"))
         with mock.patch.dict("os.environ", {"APPDATA": "C:/Users/a/AppData/Roaming"}):
             self.assertEqual(windows.data_dir(), Path("C:/Users/a/AppData/Roaming") / "AgentControlRoom")
-        self.assertTrue(str(macos.data_dir()).endswith("Application Support/AgentControlRoom"))
+        self.assertEqual(macos.data_dir().parts[-2:], ("Application Support", "AgentControlRoom"))
 
     def test_windows_speech_text_never_goes_into_the_command_line(self):
         argv, stdin = windows.speak_command('say "hi"; Remove-Item x', "en", "Microsoft Zira")

@@ -10,7 +10,7 @@ from pathlib import Path
 
 NAME = "windows"
 __all__ = ["NAME", "data_dir", "open_url", "vscode_cli", "open_in_vscode", "notify", "list_voices", "speak_command",
-           "play_command", "speak_env", "play_env", "run_in_terminal", "press_enter_in", "frontmost_app_id", "focus_app", "focus_terminal"]
+           "play_command", "speak_env", "play_env", "cancel_speech", "run_in_terminal", "press_enter_in", "frontmost_app_id", "focus_app", "focus_terminal"]
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 POWERSHELL = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"]
@@ -21,7 +21,7 @@ def data_dir():
 
 
 def _ps(script, env=None, timeout=15):
-    return subprocess.run(POWERSHELL + [script], capture_output=True, text=True, timeout=timeout,
+    return subprocess.run(POWERSHELL + [script], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
                           env=dict(os.environ, **(env or {})), creationflags=NO_WINDOW)
 
 
@@ -66,6 +66,7 @@ def notify(title, message):
 VOICES = r"""
 Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 $s.GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object { $_.VoiceInfo.Name + '|' + $_.VoiceInfo.Culture.Name }
 """
 
@@ -73,6 +74,7 @@ SPEAK = r"""
 Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
 if ($env:ACR_VOICE) { try { $s.SelectVoice($env:ACR_VOICE) } catch {} }
+[Console]::InputEncoding = [Text.Encoding]::UTF8
 $s.Speak([Console]::In.ReadToEnd())
 """
 
@@ -103,22 +105,24 @@ def play_command(path):
     """Windows Media Player's engine through PowerShell; it plays mp3 without extra software."""
     script = ("Add-Type -AssemblyName presentationCore; $p = New-Object System.Windows.Media.MediaPlayer; "
               "$p.Open([Uri]$env:ACR_FILE); $p.Play(); Start-Sleep -Milliseconds 500; "
-              "while ($p.NaturalDuration.HasTimeSpan -eq $false) { Start-Sleep -Milliseconds 100 }; "
-              "Start-Sleep -Seconds $p.NaturalDuration.TimeSpan.TotalSeconds")
+              "$n = 0; while (-not $p.NaturalDuration.HasTimeSpan -and $n -lt 100) { Start-Sleep -Milliseconds 100; $n++ }; "
+              "if ($p.NaturalDuration.HasTimeSpan) { Start-Sleep -Seconds $p.NaturalDuration.TimeSpan.TotalSeconds }")
     return POWERSHELL + [script]
+
+
+def cancel_speech():
+    pass
 
 
 def play_env(path):
     return {"ACR_FILE": str(path)}
 
 
-def run_in_terminal(folder, command):
-    wt = shutil.which("wt")
+def run_in_terminal(folder, argv):
+    """A new console window running argv directly: no cmd in between, so quotes, & | % ^ and newlines in a task
+    reach the agent unchanged. (An npm .cmd shim still goes through cmd; prefer the native claude.exe/codex.exe.)"""
     try:
-        if wt:
-            subprocess.Popen([wt, "-d", folder, "cmd", "/k", command])
-        else:
-            subprocess.Popen(["cmd", "/c", "start", "", "cmd", "/k", command], cwd=folder)
+        subprocess.Popen(list(argv), cwd=folder, creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10))
         return True, ""
     except OSError as exc:
         return False, "Could not open a terminal: {}".format(exc)

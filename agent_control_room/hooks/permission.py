@@ -7,35 +7,57 @@ Runs right before Claude Code would show a permission dialog.
 
 Stdlib only, fail-open: any error means "show the normal dialog". It never approves anything by itself.
 """
+import hashlib
+import hmac
 import json
-import os
+import secrets
 import sys
 import time
 import urllib.request
 
 from ..settings import APPROVALS_FLAG as FLAG
+from ..settings import local_opener, read_room_file
 
-ROOM = os.environ.get("AGENT_CONTROL_ROOM_URL", "http://127.0.0.1:7788")
+ROOM = {"url": "", "token": ""}
 WAIT_SECONDS = 600   # keep below the hook timeout set by install_hooks.py (660 s)
 WINDOW_ONLY = {"AskUserQuestion", "ExitPlanMode"}
 
 
 def call(method, path, body=None, timeout=5):
-    req = urllib.request.Request(ROOM + path, method=method, data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Content-Type": "application/json", "X-Control-Room": "1"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    req = urllib.request.Request(ROOM["url"] + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Content-Type": "application/json", "X-Control-Room": ROOM["token"]})
+    with local_opener().open(req, timeout=timeout) as resp:
         return json.load(resp)
+
+
+def find_room():
+    """The running room's address and key, and proof that whatever listens there knows the key, before anything
+    about the request is sent. Another program on the port gets nothing."""
+    info = read_room_file()
+    if not info.get("port") or not info.get("token"):
+        return False
+    ROOM.update(url="http://127.0.0.1:{}".format(int(info["port"])), token=info["token"])
+    nonce = secrets.token_hex(16)
+    try:
+        with local_opener().open(ROOM["url"] + "/api/hello?n=" + nonce, timeout=3) as resp:
+            answer = json.load(resp)
+    except Exception:
+        return False
+    expected = hmac.new(ROOM["token"].encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(str(answer.get("proof") or ""), expected)
 
 
 def main():
     if not FLAG.exists():
         return 0
     try:
-        event = json.load(sys.stdin)
+        event = json.load(sys.stdin.buffer if hasattr(sys.stdin, "buffer") else sys.stdin)
     except ValueError:
         return 0
     if event.get("tool_name") in WINDOW_ONLY:
         return 0  # questions and plan approvals need their window; they are not permissions
+    if not find_room():
+        return 0  # room not running (or not the real room): normal dialog
     try:
         ticket = call("POST", "/api/permission", {
             "session_id": event.get("session_id"),

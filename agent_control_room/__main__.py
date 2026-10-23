@@ -29,6 +29,7 @@ def main(argv=None):
     mode.add_argument("--hook", choices=["permission"], help=argparse.SUPPRESS)
     parser.add_argument("--apply", action="store_true", help="with --install-hook/--uninstall-hook: write the change")
     parser.add_argument("--restart", action="store_true", help="stop a room already running on this port, then start")
+    parser.add_argument("--dev", action="store_true", help="restart automatically when the code changes (from a checkout)")
     parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
     args = parser.parse_args(argv)
 
@@ -42,28 +43,38 @@ def main(argv=None):
         return 0 if ok else 2
     if args.once:
         from .server import once
-        json.dump(once(), sys.stdout, indent=2, ensure_ascii=False)
-        print()
+        if sys.stdout is None:
+            return 2  # the windowed Windows app has no console: use agent-control-room.exe
+        data = json.dumps(once(), indent=2, ensure_ascii=False) + "\n"
+        out = getattr(sys.stdout, "buffer", None)
+        if out:
+            out.write(data.encode("utf-8"))
+        else:
+            sys.stdout.write(data)
         return 0
 
+    import os
     from . import system
-    from .server import Room, ask_running_room_to_quit, room_is_running
+    from .server import Room, ask_running_room_to_quit, room_is_running, running_page_url
+    if args.dev:
+        os.environ["AGENT_CONTROL_ROOM_DEV"] = "1"
     url = "http://127.0.0.1:{}/".format(args.port)
     if args.restart:
         ask_running_room_to_quit(args.port)
     if room_is_running(url):
         print("The room is already running on {}.".format(url))
-        return show(url, args)
+        return show(running_page_url(args.port), args)
     try:
-        Room(args.port).start()
+        room = Room(args.port).start()
     except OSError as exc:
         print("Cannot listen on 127.0.0.1:{} ({}). Another program uses this port; try --port.".format(args.port, exc),
               file=sys.stderr)
         return 2
     if args.server:
+        print("Open {} (the key in the address keeps other users out).".format(room.page_url), flush=True)
         threading.Event().wait()
         return 0
-    return show(url, args, keep_serving=True, system=system)
+    return show(room.page_url, args, keep_serving=True, system=system)
 
 
 def show(url, args, keep_serving=False, system=None):
@@ -82,7 +93,7 @@ def show(url, args, keep_serving=False, system=None):
         from . import system
     system.open_url(url)
     if keep_serving:
-        print("Open {} in your browser. Press Ctrl+C to stop.".format(url))
+        print("Open {} in your browser. Press Ctrl+C to stop.".format(url), flush=True)
         try:
             threading.Event().wait()
         except KeyboardInterrupt:

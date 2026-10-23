@@ -13,7 +13,8 @@ platform themselves, so adding a platform means adding one module.
   speak_command(text, lang, voice)  (argv, stdin text or None) that reads text aloud and waits until done
   play_command(path)            argv that plays an mp3 and waits, or None when no player is available
   speak_env(voice) / play_env(path)  extra environment for those commands (text never goes in argv on Windows)
-  run_in_terminal(folder, command)  (ok, message): open a terminal window running a command
+  cancel_speech()               silence speech a killed player may have left queued (speech-dispatcher)
+  run_in_terminal(folder, argv)  (ok, message): open a terminal window running argv (never a quoted string)
   press_enter_in(process, label)    (ok, why): press Enter in an app, only if it is frontmost (macOS only)
   frontmost_app_id() / focus_app(app_id)  macOS only; None / no-op elsewhere
   focus_terminal(pid, name)     (ok, message): raise the terminal tab that runs a process

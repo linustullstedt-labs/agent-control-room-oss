@@ -14,8 +14,6 @@ Optional: sessionId, pid, and anything the plug-in itself needs later (inbox pat
 """
 import json
 import os
-import shlex
-import subprocess
 import sys
 
 STATES = ("working", "needs-permission", "needs-answer", "finished", "dead", "unknown")
@@ -49,13 +47,6 @@ class Agent:
     def recent_folders(self):
         """{folder: last used (epoch seconds)}, so the launcher can offer folders the user works in."""
         return {}
-
-
-def command_line(argv):
-    """A shell command line for run_in_terminal(), quoted for the local shell."""
-    if sys.platform.startswith("win"):
-        return subprocess.list2cmdline(argv)
-    return " ".join(shlex.quote(a) for a in argv)
 
 
 def first_cwd(path):

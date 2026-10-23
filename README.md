@@ -50,7 +50,7 @@ used as usual. The room finds them on its own, including the copies bundled with
 ```text
 agent-control-room                 open the room in its own window (falls back to the browser)
 agent-control-room --browser       open it in the default browser
-agent-control-room --server        run without opening anything (http://127.0.0.1:7788/)
+agent-control-room --server        run without opening anything (prints the address to open)
 agent-control-room --once          print one snapshot as JSON and exit (handy for bug reports)
 agent-control-room --restart       stop a room already running on the port first
 agent-control-room --install-hook [--apply]    add the Claude Code approval hook (dry run without --apply)
@@ -87,6 +87,10 @@ Everything stays on your computer. The room listens on `127.0.0.1` only and keep
 ```
 
 It never reads token or key files (`~/.claude/sessions/*.key`, `~/.codex/auth.json`, token fields in lock files).
+
+Each start creates a new secret key, kept in `room.json` in the data folder (readable only by you). The app opens
+the page with that key in its address, and every request must carry it, so other users and programs on the same
+computer cannot read your sessions or act on them.
 
 ### Network
 
