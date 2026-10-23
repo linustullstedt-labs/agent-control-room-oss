@@ -26,6 +26,16 @@ Build the installer for your own system into `dist/`:
 python packaging/build.py
 ```
 
+## Refresh screenshots
+
+Run `node tools/capture-screenshots.mjs` with Node.js 22+ and the `playwright` package available.
+The script uses installed Google Chrome by default; set `CHROMIUM_PATH` to use another Chromium executable.
+If Playwright is installed outside this checkout, set `PLAYWRIGHT_MODULE` to its absolute `index.mjs` path.
+
+The script serves the unchanged interface on a temporary loopback-only server with fictional sessions and
+writes five PNGs to `docs/screenshots/`. It does not read real sessions or send actions to agents, and closes
+the browser and server when finished. Review the images after UI changes and keep the README links in sync.
+
 ## How it is organised
 
 ```text

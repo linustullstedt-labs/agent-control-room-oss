@@ -8,6 +8,10 @@ Where the agent allows it, you can reply, approve permission prompts and start n
 
 It is an observer, not another chat client: the agents keep running where they always run.
 
+![Agent Control Room showing Claude and Codex sessions grouped by attention needed, completed work, and active work](docs/screenshots/01-session-overview.png)
+
+*Screenshots use fictional projects and sample session data.*
+
 ## What it does
 
 - **One list of every session**: Claude Code (VS Code, terminal, background sessions, Claude app) and Codex (CLI,
@@ -22,6 +26,27 @@ It is an observer, not another chat client: the agents keep running where they a
   with OpenAI's voice, using your own API key.
 - **Private folders**: list folder names under `"ignored"` in the settings file and the room never shows, stores,
   notifies about or reads them.
+
+<details>
+<summary>Approve permission prompts from the room</summary>
+
+Review the requested command and choose Allow or Deny with the optional approval hook enabled.
+
+![A checkout test permission request with Allow and Deny controls](docs/screenshots/02-permission-approval.png)
+
+</details>
+
+<details>
+<summary>Review results and reply to an agent</summary>
+
+Read an agent's summary, listen to its response, and write a follow-up message.
+
+![A completed Codex task with its summary, Listen control, and follow-up message field](docs/screenshots/03-review-and-reply.png)
+
+</details>
+
+More screenshots: [multiple agents in one project](docs/screenshots/04-multiple-agents.png) ·
+[starting a new agent](docs/screenshots/05-new-agent.png).
 
 ## Install
 
