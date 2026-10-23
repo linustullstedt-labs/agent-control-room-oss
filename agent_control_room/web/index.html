@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Control Room</title>
+<link rel="icon" id="favicon" href="/icon.svg" type="image/svg+xml">
+<style>
+/* One narrow column. Each row says what the agent needs and since when. Detail only on the open row.
+   Palette: VS Code Dark Modern. */
+:root {
+  --bg: #181818; --surface: #1f1f1f; --hover: #2a2d2e; --open: #37373d; --ink: #cccccc; --strong: #e7e7e7;
+  --muted: #9d9d9d; --line: #2b2b2b; --control: #3c3c3c;
+  --accent: #0078d4; --link: #4daafc;
+  --amber: #cca700; --green: #89d185; --blue: #3794ff; --red: #f36666; --grey: #6e7681; --string: #ce9178;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
+  --mono: Menlo, Monaco, "SF Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+.app { max-width: 780px; margin: 0 auto; padding: 28px 16px 64px; display: flex; flex-direction: column; gap: 18px; }
+button, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+h1 img { width: 18px; height: 18px; display: block; }
+.headline { margin: 2px 0 0; font-size: 22px; font-weight: 600; color: var(--strong); }
+.headline .rest { color: var(--muted); font-weight: 400; font-size: 15px; margin-left: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--control); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 5px 10px; cursor: pointer; font-size: 12.5px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--hover); color: var(--strong); }
+.seg button + button { border-left: 1px solid var(--control); }
+
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.top-actions { position: relative; }
+.btn.update { padding: 4px 10px; font-size: 12.5px; background: var(--green); border-color: var(--green); color: #102a10; }
+.btn.update:hover { background: #9fe09b; }
+footer .btn.update { padding: 1px 8px; margin: 0 4px; font-size: 12px; }
+.footlink { border: 0; background: none; color: var(--link); cursor: pointer; font-size: 12.5px; padding: 0; }
+a.footlink { text-decoration: none; }
+a.footlink:hover { text-decoration: underline; }
+[hidden] { display: none !important; }
+.plus { width: 30px; height: 28px; border: 1px solid var(--control); border-radius: 4px; background: transparent; color: var(--strong);
+  font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.plus:hover, .plus[aria-expanded="true"] { background: var(--hover); border-color: var(--accent); }
+.listen { align-self: flex-start; padding: 4px 10px; font-size: 12.5px; }
+.listen-row { display: flex; align-items: center; gap: 10px; }
+.ai-voice { font-size: 11.5px; color: var(--muted); }
+.listen[aria-pressed="true"] { border-color: var(--accent); color: var(--strong); }
+.launcher { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(440px, calc(100vw - 32px));
+  background: #252526; border: 1px solid #454545; border-radius: 6px; padding: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  display: flex; flex-direction: column; gap: 8px; }
+.l-head { display: flex; justify-content: space-between; align-items: baseline; }
+.l-head b { color: var(--strong); font-size: 13px; }
+.l-x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12.5px; }
+.launcher input, .launcher textarea, .launcher select { width: 100%; border: 1px solid var(--control); border-radius: 2px; background: var(--bg);
+  color: var(--strong); padding: 8px 10px; font: inherit; font-size: 14px; }
+.launcher input:focus, .launcher textarea:focus { border-color: var(--accent); outline: none; }
+.launcher textarea { resize: none; overflow-y: auto; min-height: 36px; }
+.launcher select { width: auto; padding: 3px 6px; font-size: 13px; }
+.l-list { display: flex; flex-direction: column; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 2px; }
+.l-group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 8px 10px 3px; }
+.l-item { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; background: transparent; border: 0;
+  padding: 6px 10px; cursor: pointer; color: var(--ink); }
+.l-item:hover { background: var(--hover); }
+.l-item[aria-selected="true"] { background: #04395e; color: #fff; }
+.l-item .n { font-weight: 600; color: var(--strong); white-space: nowrap; }
+.l-item .w { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-item .tag { margin-left: auto; font-size: 11px; color: var(--green); white-space: nowrap; }
+.l-item.create .n { color: var(--link); }
+.l-empty { padding: 10px; color: var(--muted); font-size: 13px; }
+.l-label { font-size: 12.5px; color: var(--muted); }
+.l-label span { opacity: .7; }
+.l-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.l-row .btn { margin-left: auto; }
+.launcher .seg button { padding: 4px 8px; font-size: 12px; }
+.launcher .seg button:disabled { opacity: .35; cursor: not-allowed; }
+.btn kbd { border-color: rgba(255,255,255,.5); color: #fff; margin-left: 4px; }
+.switch { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; cursor: pointer;
+  font-size: 12.5px; color: var(--muted); padding: 4px 2px; white-space: nowrap; }
+.switch .track { width: 26px; height: 14px; border-radius: 7px; background: var(--control); position: relative; flex: none; }
+.switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch[aria-checked="true"] { color: var(--strong); }
+.switch[aria-checked="true"] .track { background: var(--accent); }
+.switch[aria-checked="true"] .track::after { transform: translateX(12px); }
+.btn.allow { background: transparent; border-color: var(--green); color: var(--green); }
+.btn.allow:hover { background: rgba(137,209,133,.15); }
+.btn.deny { background: transparent; border-color: var(--red); color: var(--red); }
+.btn.deny:hover { background: rgba(243,102,102,.15); }
+.banner.info { border-color: var(--amber); color: var(--amber); }
+.modal-back { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(460px, 100%); background: #252526; border: 1px solid #454545; border-radius: 8px; padding: 18px 20px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 10px; }
+.modal h2 { margin: 0; font-size: 16px; color: var(--strong); }
+.modal p { margin: 0; font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.modal .row-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.banner { border: 1px solid var(--red); color: var(--red); border-radius: 4px; padding: 8px 12px; font-size: 13px; }
+.list { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 14px 18px 4px; }
+.item + .item { border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline; width: 100%;
+  text-align: left; background: transparent; border: 0; padding: 12px 18px; cursor: pointer; }
+.row:hover { background: var(--hover); }
+.item.cur > .row { background: var(--hover); box-shadow: inset 2px 0 0 var(--accent); }
+.item.open .row, .item.open .body { background: var(--open); }
+.item.open .line { display: none; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); align-self: center; }
+.s-needs-permission, .s-needs-answer { --c: var(--amber); } .s-finished { --c: var(--green); }
+.s-working { --c: var(--blue); } .s-dead { --c: var(--red); } .s-unknown { --c: var(--grey); }
+.s-working .dot { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+.name { font-weight: 600; font-size: 14.5px; color: var(--strong); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 8px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 18px 10px 42px; background: var(--open); }
+.tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--control); background: var(--surface); color: var(--muted);
+  border-radius: 4px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; max-width: 260px; }
+.tab .tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .dot { width: 7px; height: 7px; }
+.tab .who { margin-left: 2px; }
+.tab[aria-selected="true"] { color: var(--strong); border-color: var(--accent); background: #04395e; }
+.tabhint { color: var(--ink); }
+.new { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; color: #10300f; background: var(--green);
+  border-radius: 3px; padding: 0 5px; margin-left: 8px; vertical-align: 1px; }
+.item.is-new .dot { box-shadow: 0 0 0 3px rgba(137, 209, 133, .28); }
+.item.is-new .name { color: #fff; }
+.seen-all { border: 0; background: none; color: var(--link); cursor: pointer; font-size: 11px; text-transform: none;
+  letter-spacing: 0; font-weight: 500; margin-left: 10px; padding: 0; }
+.who { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; color: var(--muted); border: 1px solid var(--control);
+  border-radius: 3px; padding: 0 4px; margin-left: 8px; vertical-align: 1px; }
+.who.codex { color: #b4a7ff; border-color: #4b4470; }
+.time { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.time.stale { color: var(--amber); font-weight: 600; }
+.line { grid-column: 2 / -1; color: var(--muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line b { color: var(--c); font-weight: 600; }
+.line code { font-family: var(--mono); font-size: 12px; color: var(--string); }
+.body { padding: 0 18px 16px 42px; display: flex; flex-direction: column; gap: 12px; }
+.b-main, .b-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.more-btn { padding: 6px 10px; letter-spacing: .1em; }
+.more-btn[aria-expanded="true"] { border-color: var(--accent); }
+.full { margin: 0; font-size: 14px; color: var(--strong); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
+.md { font-size: 14px; line-height: 1.5; color: var(--strong); overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 8px; }
+.md p, .md ul, .md ol, .md pre { margin: 0; }
+.md ul, .md ol { padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+.md b { color: #fff; }
+.md code { font-family: var(--mono); font-size: 12.5px; color: var(--string); }
+.md pre { font-family: var(--mono); font-size: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  padding: 8px 10px; overflow-x: auto; white-space: pre; color: var(--ink); }
+.md .h { font-weight: 600; color: #fff; }
+.md .tbl { overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.md th { color: #fff; font-weight: 600; }
+.md.scroll { max-height: 420px; overflow-y: auto; padding-right: 6px; }
+details.fullreply > summary { margin-top: 2px; }
+details.fullreply[open] > summary { margin-bottom: 8px; }
+.full.code { font-family: var(--mono); font-size: 12.5px; color: var(--string); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 4px; padding: 8px 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 2px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.btn:hover { background: #026ec1; }
+.hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.reply { display: flex; gap: 8px; align-items: flex-end; }
+.reply textarea { flex: 1; min-width: 0; resize: none; overflow-y: auto; min-height: 38px; border: 1px solid var(--control); border-radius: 2px;
+  background: var(--surface); padding: 8px 10px; font-size: 13.5px; color: var(--strong); }
+.reply textarea:focus { border-color: var(--accent); outline: none; }
+.btn.secondary { background: #313131; border-color: var(--control); color: var(--strong); }
+.btn.secondary:hover { background: var(--control); }
+.btn:disabled { opacity: .5; cursor: default; }
+details { font-size: 12.5px; color: var(--muted); }
+summary { cursor: pointer; width: fit-content; }
+summary:hover { color: var(--strong); }
+.more { margin: 8px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; }
+.more dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.empty { padding: 28px 18px; color: var(--muted); margin: 0; }
+footer { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; }
+kbd { font-family: var(--mono); font-size: 11px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--control); color: var(--strong); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; max-width: calc(100vw - 32px); background: var(--strong);
+  color: var(--bg); border-radius: 999px; padding: 8px 16px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast.bad { background: var(--red); }
+/* Wide screens (1440p and up): use the width. The open row puts the reply on the left and its controls on the right. */
+@media (min-width: 1200px) {
+  .app { max-width: 1120px; padding-left: 32px; padding-right: 32px; }
+  .body.split { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 16px 28px; align-items: start; }
+  .tab { max-width: 340px; }
+}
+@media (min-width: 1800px) {
+  .app { max-width: 1560px; padding-top: 40px; }
+  body, .md { font-size: 15px; }
+  .name { font-size: 15.5px; }
+  .line { font-size: 14px; }
+  .md.scroll { max-height: 62vh; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1><img src="/icon.svg" alt="">Agent Control Room</h1>
+      <p class="headline" id="headline">Loading…</p>
+    </div>
+    <div class="top-actions">
+    <button type="button" class="switch" id="sw-approve" role="switch" aria-checked="false"
+      title="When on, new Claude permission prompts wait here for Allow or Deny instead of in their window"><span class="track"></span>Approve here</button>
+    <button type="button" class="switch" id="sw-notify" role="switch" aria-checked="true"
+      title="Desktop notifications when an agent needs you or finishes a longer turn"><span class="track"></span>Notify</button>
+    <button type="button" class="plus" id="new-agent" aria-label="New agent" title="New agent (n)" aria-expanded="false" aria-controls="launcher">+</button>
+    <div class="seg" role="group" aria-label="Filter by agent">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="claude" aria-pressed="false">Claude</button>
+      <button type="button" data-filter="codex" aria-pressed="false">Codex</button>
+    </div>
+      <section class="launcher" id="launcher" hidden aria-label="Start a new agent">
+        <div class="l-head"><div class="seg" id="l-agent" role="group" aria-label="Agent"><button type="button" data-agent="claude" aria-pressed="true">Claude</button><button type="button" data-agent="codex" aria-pressed="false">Codex</button></div><button type="button" class="l-x" id="l-close">Close <kbd>Esc</kbd></button></div>
+        <input id="l-search" autocomplete="off" spellcheck="false" placeholder="Search folders, or type a name to create a new one">
+        <div class="l-list" id="l-list" role="listbox" aria-label="Folders"></div>
+            <textarea id="l-prompt" rows="2" placeholder="First task (optional)"></textarea>
+        <div class="l-row">
+                    <div class="seg" id="l-target" role="group" aria-label="Open in">
+            <button type="button" data-target="window" aria-pressed="true">This window</button>
+            <button type="button" data-target="new-window" aria-pressed="false">New window</button>
+            <button type="button" data-target="terminal" aria-pressed="false">Terminal</button>
+        <button type="button" data-target="app" aria-pressed="false">ChatGPT app</button>
+          </div>
+          <button type="button" class="btn" id="l-go">Start <kbd>⌘↵</kbd></button>
+        </div>
+    
+      </section>
+    </div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <div class="list" id="list" role="list"></div>
+  <footer>
+    <span><kbd>j</kbd> <kbd>k</kbd> move</span><span><kbd>↵</kbd> open or close</span><span><kbd>g</kbd> go to window</span><span><kbd>r</kbd> reply</span><span><kbd>a</kbd> <kbd>d</kbd> allow / deny</span><span><kbd>n</kbd> new agent</span><span><kbd>l</kbd> listen</span>
+    <span id="updated"></span>
+    <span><button type="button" class="footlink" id="voice-toggle" title="Which voice Listen uses. OpenAI sends the reply text to OpenAI and needs your own key in the OPENAI_API_KEY environment variable.">Voice: macOS</button></span>
+    <span><button type="button" class="footlink" id="check-updates">Check for updates</button>
+      <a class="btn update" id="update-btn" hidden target="_blank" rel="noopener" title="Download the new version">Update</a>
+      <span id="version"></span></span>
+    <span><a class="footlink" id="suggest" target="_blank" rel="noopener"
+      href="https://github.com/alicelabs-ai/agent-control-room-oss/issues/new">Suggest a feature or report a bug</a></span>
+    <span id="hook-remove-wrap" hidden><button type="button" class="footlink" id="hook-remove">Remove approval hook</button></span>
+  </footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div class="modal-back" id="hook-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="hook-title">
+    <h2 id="hook-title">Approve prompts from the room</h2>
+    <p>To answer Claude's permission prompts here, the room adds one small hook to your Claude Code settings.
+       It only acts while "Approve here" is on. With it off, prompts show in their own window as before.</p>
+    <p>A backup of your settings is saved first, and you can remove the hook again at any time.</p>
+    <div class="row-btns">
+      <button type="button" class="btn secondary" id="hook-cancel">Not now</button>
+      <button type="button" class="btn" id="hook-install">Install and turn on</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Report page errors to the room's log, so problems inside the app's own web view are visible. */
+function reportToRoom(kind, detail) {
+  try { fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' },
+    body: JSON.stringify({ kind, detail: String(detail).slice(0, 500), agent: navigator.userAgent.slice(0, 80) }) }); } catch (e) {}
+}
+window.addEventListener('error', e => reportToRoom('error', `${e.message} @${e.lineno}:${e.colno}`));
+window.addEventListener('unhandledrejection', e => reportToRoom('rejection', e.reason && (e.reason.stack || e.reason.message) || e.reason));
+
+const ORDER = { 'needs-permission': 0, 'needs-answer': 1, dead: 2, finished: 3, working: 4, unknown: 5 };
+const GROUPS = [
+  { label: 'Needs you', match: s => s.state.startsWith('needs') || s.state === 'dead' },
+  { label: 'Done', match: s => s.state === 'finished' },
+  { label: 'Working', match: s => s.state === 'working' || s.state === 'unknown' },
+];
+const VENDOR = { claude: 'Claude Code', codex: 'Codex' };
+const CLIENT = { vscode: 'VS Code', terminal: 'Terminal', bg: 'Background', desktop: 'ChatGPT app', chrome: 'Chrome', 'claude-app': 'Claude app' };
+const STALE_MS = 10 * 60e3;
+
+let sessions = [], openRepo = null, filter = 'all', lastOk = 0, renderPending = false, speakingKey = null, voice = 'system', speechError = null, PLATFORM = '';
+const activeTab = {};   // repo -> session key of the selected tab
+let navRepo = null;
+/* "New": finished after you last looked at it. Kept per viewer in localStorage. */
+let seen = {}, seenReady = false;
+try { const raw = localStorage.getItem('room-seen'); if (raw) { seen = JSON.parse(raw) || {}; seenReady = true; } } catch (e) {}
+function saveSeen() { try { localStorage.setItem('room-seen', JSON.stringify(seen)); } catch (e) {} }
+const isNew = s => s.state === 'finished' && !s.placeholder && seen[s.key] !== s.since;
+function markSeen(list) {
+  let changed = false;
+  for (const s of list) if (s && s.state === 'finished' && seen[s.key] !== s.since) { seen[s.key] = s.since; changed = true; }
+  if (changed) saveSeen();
+}      // the row j/k moves from; Safari's engine does not focus buttons on click
+let approvals = { on: false, hookInstalled: false }, notifications = true;
+let drafts = {};
+try { drafts = JSON.parse(sessionStorage.getItem('room-drafts') || '{}'); } catch (e) {}
+let pageVersion = null;
+const openDetails = new Set();   // `${key}|full` or `${key}|more`, kept across redraws
+const replyScroll = {};
+const typing = () => document.activeElement?.id === 'reply-input';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+function ago(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  return h < 24 ? h + 'h ' + pad(m % 60) + 'm' : Math.floor(h / 24) + 'd';
+}
+const isNeed = s => s.state.startsWith('needs') || s.state === 'dead';
+const visible = () => sessions.filter(s => filter === 'all' || s.vendor === filter)
+  .sort((a, b) => ORDER[a.state] - ORDER[b.state] || (isNeed(a) ? a.since - b.since : b.since - a.since));
+
+/* Small, safe Markdown subset: escape first, then add paragraphs, lists, bold, inline code and code blocks. */
+function inline(text) {
+  return esc(text)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+const isRow = l => /^\s*\|.*\|\s*$/.test(l);
+const isRule = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+function md(src) {
+  const out = []; let list = null, code = null;
+  const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`); list = null; } };
+  const lines = String(src).replace(/\r/g, '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    if (code === null && isRow(raw) && isRule(lines[i + 1] || '')) {
+      flush();
+      const head = cells(raw), body = [];
+      for (i += 2; i < lines.length && isRow(lines[i]); i++) body.push(cells(lines[i]));
+      i--;
+      out.push(`<div class="tbl"><table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>` +
+        body.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>');
+      continue;
+    }
+    if (code !== null) {
+      if (/^\s*```/.test(raw)) { out.push(`<pre>${esc(code.join('\n'))}</pre>`); code = null; } else code.push(raw);
+      continue;
+    }
+    if (/^\s*```/.test(raw)) { flush(); code = []; continue; }
+    const ul = raw.match(/^\s*[-*]\s+(.*)/), ol = raw.match(/^\s*\d+[.)]\s+(.*)/);
+    if (ul || ol) {
+      const tag = ul ? 'ul' : 'ol';
+      if (!list || list.tag !== tag) { flush(); list = { tag, items: [] }; }
+      list.items.push((ul || ol)[1]); continue;
+    }
+    if (list && /^\s{2,}\S/.test(raw)) { list.items[list.items.length - 1] += ' ' + raw.trim(); continue; }
+    flush();
+    if (!raw.trim()) continue;
+    const h = raw.match(/^\s*#{1,6}\s+(.*)/);
+    out.push(h ? `<p class="h">${inline(h[1])}</p>` : `<p>${inline(raw)}</p>`);
+  }
+  if (code !== null) out.push(`<pre>${esc(code.join('\n'))}</pre>`);
+  flush();
+  return out.join('');
+}
+/* The opening paragraph, which in a good reply carries the answer. A second one is added when the first is very short. */
+function summarize(text) {
+  // Tables only belong in the full reply: drop their lines, then any block left empty.
+  const blocks = String(text).trim().split(/\n\s*\n/)
+    .map(b => b.split('\n').filter(l => !isRow(l) && !isRule(l)).join('\n').trim()).filter(Boolean);
+  let short = blocks[0] || '';
+  if (short.length < 120 && blocks[1] && !/^\s*[-*\d]/.test(blocks[1])) short += '\n\n' + blocks[1];
+  return short;
+}
+
+function lineHtml(s) {
+  if (s.state === 'needs-permission') return `<b>Wants to run</b> <code>${esc(s.line.replace(/^Wants to run: /, ''))}</code>`;
+  if (s.state === 'needs-answer') return `<b>Asks:</b> ${esc(s.line.replace(/^Asks: /, ''))}`;
+  if (s.state === 'dead') return `<b>Stopped unexpectedly</b> ${esc(s.line.replace(/^Stopped unexpectedly /, ''))}`;
+  return esc(s.line);
+}
+
+/* One main control per state; everything else waits behind "⋯". Explanations live in tooltips, not on screen. */
+function bodyHtml(s) {
+  let full = '';
+  if (s.state === 'needs-permission') full = s.full ? `<p class="full code">${esc(s.full)}</p>` : '';
+  else if (s.full) {
+    const short = summarize(s.full);
+    full = `<div class="md">${md(short)}</div>` +
+      (short.length < s.full.trim().length ? `<details class="fullreply" data-d="full"${openDetails.has(s.key + '|full') ? ' open' : ''}><summary>Show full reply</summary><div class="md scroll">${md(s.full)}</div></details>` : '');
+  }
+  const btn = (act, label, cls = 'secondary', title = '') => `<button type="button" class="btn ${cls}" data-act="${act}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`;
+  if (full && s.state !== 'needs-permission') {
+    const on = speakingKey === s.key;
+    const ai = voice === 'openai';  // OpenAI's usage policy: say plainly that the voice is AI-generated
+    full += `<div class="listen-row"><button type="button" class="btn secondary listen" data-act="listen" aria-pressed="${on}"
+      title="${ai ? 'Read this reply aloud with an AI-generated voice from OpenAI (l)' : "Read this reply aloud with this computer's voices (l)"}">${on ? '■ Stop' : '▶ Listen'}</button>${ai ? '<span class="ai-voice">AI voice (OpenAI)</span>' : ''}</div>`;
+  }
+  const ownWindow = s.vendor === 'claude' && isNeed(s);
+  const jumpTitle = s.vendor === 'codex' && !s.canReply ? 'Reply to this Codex thread in its window.'
+    : ownWindow && s.state === 'needs-permission' && !approvals.on ? 'Answer it in its window, or switch on Approve here so new prompts wait in the room.' : '';
+  const jumpBtn = btn('jump', ownWindow ? 'Answer in window' : 'Go to window', 'primary', jumpTitle);
+  const main = s.approvalId ? btn('allow', 'Allow', 'allow') + btn('deny', 'Deny', 'deny')
+    : s.canReply ? '' : jumpBtn;
+  const extra = [
+    s.approvalId ? btn('window', 'Answer in window') : s.canReply ? btn('jump', 'Go to window') : '',
+    s.client === 'bg' && s.state === 'working' ? btn('stop', 'Stop') : '',
+    s.approvalId ? '' : btn('close', 'Close', 'secondary', 'Hide this row until the agent does something new. The agent keeps running.'),
+    s.cwd ? btn('new-here', 'New session here', 'secondary', 'Start a new agent in this repository') : '',
+  ].join('');
+  const moreOpen = openDetails.has(s.key + '|menu');
+  const more = extra ? `<button type="button" class="btn secondary more-btn" data-act="more" aria-expanded="${moreOpen}" title="More actions">⋯</button>` : '';
+  const replyTitle = s.vendor === 'codex'
+    ? 'Sent as your own message, in the background. Open the thread in the app to follow the reply live.'
+    : 'Arrives as a message from the Control Room: it can steer the agent but never approve anything. The agent restates it first, because VS Code does not show it in the chat.';
+  const controls = s.canReply ? `<form class="reply" data-reply>
+        <textarea id="reply-input" rows="1" aria-label="Message to ${esc(s.name)}" title="${esc(replyTitle)}"
+          placeholder="${s.vendor === 'codex' ? 'Message Codex…' : s.state === 'working' ? 'Queue a message for Claude…' : 'Message Claude…'}">${esc(drafts[s.key] || '')}</textarea>
+        <button type="submit" class="btn secondary" title="${esc(replyTitle)}">Send</button>${more}
+      </form>` : `<div class="actions">${main}${more}</div>`;
+  return `<div class="body${full ? ' split' : ''}">${full ? `<div class="b-main">${full}</div>` : ''}
+    <div class="b-side">${controls}
+      ${moreOpen && extra ? `<div class="actions">${extra}</div>` : ''}
+      <details data-d="more"${openDetails.has(s.key + '|more') ? ' open' : ''}><summary>Show details</summary><dl class="more">
+        ${s.subtitle ? `<dt>Session</dt><dd>${esc(s.subtitle)}</dd>` : ''}
+        <dt>Agent</dt><dd>${VENDOR[s.vendor] || esc(s.vendor)} in ${CLIENT[s.client] || esc(s.client)}</dd>
+        <dt>Folder</dt><dd class="mono">${esc(s.cwd)}</dd>
+        ${s.task ? `<dt>Last prompt</dt><dd>${esc(s.task)}</dd>` : ''}
+        <dt>Session ID</dt><dd class="mono">${esc(s.sessionId)}</dd>
+        <dt>Status from</dt><dd>${esc(s.source)}</dd>
+      </dl></details></div></div>`;
+}
+
+/* Sessions are grouped per repository: one row per repo, its agents as tabs. */
+const groupKey = s => s.repo || s.name;
+const rank = (a, b) => ORDER[a.state] - ORDER[b.state] || (isNew(b) - isNew(a)) || (isNeed(a) ? a.since - b.since : b.since - a.since);
+/* Inside a repo a working agent leads (and so places the repo), else the most recently active one. */
+const TAB_ORDER = { 'needs-permission': 0, 'needs-answer': 1, dead: 2, working: 3, finished: 4, unknown: 4 };
+const tabRank = (a, b) => TAB_ORDER[a.state] - TAB_ORDER[b.state] || (isNeed(a) ? a.since - b.since : b.since - a.since);
+function repoGroups() {
+  const map = new Map();
+  for (const s of visible()) {
+    const k = groupKey(s);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(s);
+  }
+  return [...map.entries()].map(([repo, list]) => {
+    list.sort(tabRank);
+    const active = list.find(s => s.key === activeTab[repo]) || list[0];
+    return { repo, list, top: list[0], active };
+  }).sort((a, b) => rank(a.top, b.top));
+}
+
+function itemHtml(g) {
+  const s = g.top, open = g.repo === openRepo, many = g.list.length > 1, fresh = g.list.filter(isNew).length;
+  const stale = isNeed(s) && Date.now() - s.since > STALE_MS;
+  const vendors = [...new Set(g.list.map(x => x.vendor))];
+  const sub = many ? `${g.list.length} agents` : (s.subtitle || '');
+  const tabs = open && many ? `<div class="tabs" role="tablist">${g.list.map(x => `
+      <button type="button" class="tab s-${x.state}" role="tab" data-tab="${esc(x.key)}" aria-selected="${x.key === g.active.key}">
+        <span class="dot" aria-hidden="true"></span><span class="tab-label">${esc(x.subtitle || (x.vendor === 'codex' ? 'Codex' : 'Claude'))}</span>${isNew(x) ? '<span class="new">New</span>' : ''}
+        ${vendors.length > 1 ? `<span class="who ${x.vendor}">${x.vendor === 'codex' ? 'Codex' : 'Claude'}</span>` : ''}
+      </button>`).join('')}</div>` : '';
+  const line = many ? `${s.subtitle ? `<span class="tabhint">${esc(s.subtitle)}:</span> ` : ''}${lineHtml(s)}` : lineHtml(s);
+  return `<div class="item s-${s.state}${open ? ' open' : ''}${fresh ? ' is-new' : ''}${g.repo === navRepo ? ' cur' : ''}" role="listitem" data-repo="${esc(g.repo)}" data-key="${esc(g.active.key)}">
+    <button type="button" class="row" aria-expanded="${open}">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="name">${esc(g.repo)}${fresh ? `<span class="new" title="Finished since you last looked">${fresh > 1 ? fresh + ' new' : 'New'}</span>` : ''}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}${vendors.map(v => `<span class="who ${v}">${v === 'codex' ? 'Codex' : 'Claude'}</span>`).join('')}</span>
+      <span class="time${stale ? ' stale' : ''}" data-since="${s.since}">${ago(Date.now() - s.since)}</span>
+      <span class="line">${line}</span>
+    </button>${open ? tabs + bodyHtml(g.active) : ''}</div>`;
+}
+
+/* After a successful action the open row folds back to one line. */
+function collapse(key) {
+  const s = sessions.find(x => x.key === key);
+  if (s && openRepo === groupKey(s)) { openRepo = null; document.activeElement?.blur(); render(); }
+}
+
+function render() {
+  if (typing()) { renderPending = true; return; }
+  renderPending = false;
+  if (!seenReady && sessions.length) { markSeen(sessions); seenReady = true; }  // first visit: what is done now counts as seen
+  const vis = sessions.filter(s => filter === 'all' || s.vendor === filter);
+  const need = vis.filter(isNeed).length, done = vis.filter(s => s.state === 'finished').length;
+  const work = vis.length - need - done;
+  $('#headline').innerHTML = (need ? `${need} need${need === 1 ? 's' : ''} you` : 'All clear') + `<span class="rest">${done} done${vis.filter(isNew).length ? ` (${vis.filter(isNew).length} new)` : ''} · ${work} working</span>`;
+  const all = sessions.filter(isNeed).length;
+  document.title = (all ? `(${all}) ` : '') + 'Agent Control Room';
+  drawFavicon(all);
+
+  const focusedRepo = document.activeElement?.closest?.('.item')?.dataset.repo || (document.activeElement === document.body ? navRepo : null);
+  let groups = repoGroups();
+  const viewing = groups.find(x => x.repo === openRepo);
+  if (viewing && isNew(viewing.active)) { markSeen([viewing.active]); groups = repoGroups(); }
+  let html = '';
+  for (const g of GROUPS) {
+    const rows = groups.filter(x => g.match(x.top));
+    const unseen = g.label === 'Done' && rows.some(x => x.list.some(isNew));
+    if (rows.length) html += `<div class="group">${g.label}${unseen ? '<button type="button" class="seen-all" data-act="seen-all">Mark all seen</button>' : ''}</div>` + rows.map(itemHtml).join('');
+  }
+  $('#list').innerHTML = html || '<p class="empty">No agent sessions are running.</p>';
+  document.querySelectorAll('.item .md.scroll').forEach(el => { const k = el.closest('.item').dataset.key; if (replyScroll[k]) el.scrollTop = replyScroll[k]; });
+  document.querySelectorAll('#list textarea').forEach(autoGrow);
+  if (focusedRepo) document.querySelector(`.item[data-repo="${CSS.escape(focusedRepo)}"] .row`)?.focus({ preventScroll: true });
+}
+
+/* Tab icon: the room icon, with an amber count badge when agents need you. */
+const iconImg = new Image(); iconImg.src = '/icon.svg';
+let lastBadge = -1;
+function drawFavicon(n) {
+  if (n === lastBadge) return;
+  if (!iconImg.complete) { iconImg.onload = () => { lastBadge = -1; drawFavicon(n); }; return; }
+  lastBadge = n;
+  if (!n) { $('#favicon').href = '/icon.svg'; return; }
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.drawImage(iconImg, 0, 0, 64, 64);
+  g.fillStyle = '#cca700'; g.strokeStyle = '#181818'; g.lineWidth = 4;
+  g.beginPath(); g.arc(43, 21, 21, 0, Math.PI * 2); g.fill(); g.stroke();
+  g.fillStyle = "#181818"; g.font = "bold 30px -apple-system, sans-serif"; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(n > 9 ? "9+" : String(n), 43, 23);
+  $('#favicon').href = c.toDataURL();
+}
+
+function tick() {
+  const now = Date.now();
+  document.querySelectorAll('[data-since]').forEach(el => {
+    const ms = now - Number(el.dataset.since);
+    el.textContent = ago(ms);
+    const item = el.closest('.item');
+    el.classList.toggle('stale', item && (item.classList.contains('s-needs-permission') || item.classList.contains('s-needs-answer') || item.classList.contains('s-dead')) && ms > STALE_MS);
+  });
+  // only worth showing when the room has stopped answering; a healthy page refreshes every few seconds
+  $('#updated').textContent = lastOk && now - lastOk > 5 * 60 * 1000 ? `Updated ${ago(now - lastOk)} ago` : '';
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/sessions', { cache: 'no-store' });
+    const snap = await res.json();
+    if (pageVersion === null) pageVersion = snap.pageVersion;
+    else if (snap.pageVersion && snap.pageVersion !== pageVersion && !typing()) {
+      try { sessionStorage.setItem('room-drafts', JSON.stringify(drafts)); } catch (e) {}
+      location.reload(); return;
+    }
+    approvals = snap.approvals || approvals; notifications = snap.notifications !== false;
+    const up = snap.update || {};
+    $('#update-btn').hidden = !up.newer;
+    if (up.newer) { $('#update-btn').href = up.url; $('#update-btn').textContent = `Update to ${up.latest}`; }
+    PLATFORM = snap.platform || PLATFORM;
+    $('#version').textContent = snap.version ? `· version ${snap.version}` : '';
+    // suggestions become GitHub issues in the room's repo; the version says which build a bug was seen on
+    $('#suggest').href = (snap.repoUrl || 'https://github.com/alicelabs-ai/agent-control-room-oss') + '/issues/new?' + new URLSearchParams({
+      body: `What would you like, or what went wrong?\n\n\n\nSent from Agent Control Room ${snap.version || ''} on ${snap.platform || '?'}`}).toString();
+    $('#sw-approve').setAttribute('aria-checked', String(approvals.on));
+    $('#hook-remove-wrap').hidden = !approvals.hookInstalled;
+    $('#sw-notify').setAttribute('aria-checked', String(notifications));
+    if ((snap.speaking || null) !== speakingKey) { speakingKey = snap.speaking || null; render(); }
+    if ((snap.voice || 'system') !== voice) { voice = snap.voice || 'system'; render(); }
+    $('#voice-toggle').textContent = voice === 'openai' ? 'Voice: OpenAI (AI voice)' : 'Voice: system';
+    if (snap.speechError && snap.speechError !== speechError) toast('Could not read aloud as chosen: ' + snap.speechError, true);
+    speechError = snap.speechError || null;
+    const sig = JSON.stringify(snap.sessions) + approvals.on;
+    if (sig !== JSON.stringify(sessions)) { sessions = snap.sessions; render(); }
+    lastOk = Date.now();
+    const banner = $('#banner');
+    const notes = [...snap.errors];
+    if (approvals.on && !approvals.hookInstalled) notes.push('Approve here is on, but the hook is missing. Switch Approve here off and on again to install it.');
+    banner.hidden = !notes.length;
+    banner.classList.toggle('info', !snap.errors.length);
+    banner.textContent = notes.join(' · ');
+  } catch (e) {
+    const banner = $('#banner');
+    banner.hidden = false;
+    banner.textContent = 'Cannot reach the control room server. Start it with: python3 tools/control_room_server.py';
+  }
+}
+
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('#toast'); t.textContent = msg; t.classList.toggle('bad', !!bad); t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 2800);
+}
+
+async function jump(key) {
+  if (!key) return;
+  try {
+    const res = await fetch('/api/jump', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify({ key }) });
+    const out = await res.json();
+    toast(out.message, !out.ok);
+    if (out.ok) collapse(key);
+  } catch (e) { toast('Jump failed: the server did not answer', true); }
+}
+
+async function reply(key) {
+  const text = (drafts[key] || '').trim();
+  if (!text) return toast('Type a message first', true);
+  const btn = document.querySelector('[data-reply] button'); if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/reply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify({ key, text }) });
+    const out = await res.json();
+    toast(out.message, !out.ok);
+    if (out.ok) { drafts[key] = ''; collapse(key); refresh(); }
+  } catch (e) { reportToRoom('reply-failed', e && (e.stack || e.message)); toast('Sending failed: the server did not answer', true); }
+  if (btn) btn.disabled = false;
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify(body) });
+  return res.json();
+}
+async function decide(key, behavior) {
+  const s = sessions.find(x => x.key === key);
+  if (!s?.approvalId) return toast(approvals.on ? 'Nothing is waiting for approval here' : 'Switch on Approve here to answer prompts from the room', true);
+  try { const out = await post('/api/decide', { id: s.approvalId, behavior }); toast(out.message, !out.ok); if (out.ok) collapse(key); refresh(); }
+  catch (e) { toast('The server did not answer', true); }
+}
+async function stopSession(key) {
+  try { const out = await post('/api/stop', { key }); toast(out.message, !out.ok); if (out.ok) collapse(key); refresh(); }
+  catch (e) { toast('The server did not answer', true); }
+}
+async function closeSession(key) {
+  try { const out = await post('/api/close', { key }); toast(out.message, !out.ok); if (out.ok) collapse(key); refresh(); }
+  catch (e) { toast('The server did not answer', true); }
+}
+async function setSwitch(name, value) {
+  try { await post('/api/settings', { [name]: value }); refresh(); }
+  catch (e) { toast('The server did not answer', true); }
+}
+// Listen: the room reads this row's reply aloud, each paragraph in its language; pressing again stops it.
+async function listen(key) {
+  try {
+    const out = await post('/api/speak', { key });
+    speakingKey = out.speaking || null; render();
+    if (!out.ok) toast(out.message || 'Could not read this reply aloud', true);
+  } catch (e) { toast('The server did not answer', true); }
+}
+$('#voice-toggle').addEventListener('click', async () => {
+  try {
+    const out = await post('/api/settings', { voice: voice === 'openai' ? 'system' : 'openai' });
+    voice = out.voice || 'system'; render();
+    $('#voice-toggle').textContent = voice === 'openai' ? 'Voice: OpenAI (AI voice)' : 'Voice: system';
+    toast(voice === 'openai' ? 'Listen now uses an AI voice from OpenAI. The reply text is sent to OpenAI.' : 'Listen now uses this computer\'s own voices.');
+  } catch (e) { toast('The server did not answer', true); }
+});
+$('#check-updates').addEventListener('click', async () => {
+  toast('Checking for updates…');
+  try {
+    const up = await post('/api/update/check', {});
+    if (up.error) toast(up.error, true);
+    else if (up.newer) { toast(`Version ${up.latest} is available. Click Update to download it.`); refresh(); }
+    else toast('You have the latest version');
+  } catch (e) { toast('The server did not answer', true); }
+});
+
+function showHookModal(show) { $('#hook-modal').hidden = !show; if (show) $('#hook-install').focus(); }
+$('#hook-cancel').addEventListener('click', () => showHookModal(false));
+$('#hook-remove').addEventListener('click', async () => {
+  try { const out = await post('/api/hook/remove', {}); toast(out.message, !out.ok); refresh(); }
+  catch (e) { toast('The server did not answer', true); }
+});
+$('#hook-modal').addEventListener('keydown', e => { if (e.key === 'Escape') showHookModal(false); });
+$('#hook-install').addEventListener('click', async () => {
+  $('#hook-install').disabled = true;
+  try {
+    const out = await post('/api/hook/install', { enable: true });
+    toast(out.ok ? 'Approve here is on. New permission prompts will wait here.' : out.message, !out.ok);
+    if (out.ok) showHookModal(false);
+    refresh();
+  } catch (e) { toast('The server did not answer', true); }
+  $('#hook-install').disabled = false;
+});
+
+$('#sw-approve').addEventListener('click', () => {
+  const on = !approvals.on;
+  if (on && !approvals.hookInstalled) { showHookModal(true); return; }
+  setSwitch('approvals', on);
+  toast(on ? 'New permission prompts will wait here for up to 10 minutes' : 'Permission prompts show in their window again');
+});
+$('#sw-notify').addEventListener('click', () => { setSwitch('notifications', !notifications); toast(notifications ? 'Notifications off' : 'Notifications on'); });
+
+$('#list').addEventListener('toggle', e => {
+  const d = e.target; if (!d.dataset?.d) return;
+  const id = d.closest('.item').dataset.key + '|' + d.dataset.d;
+  if (d.open) openDetails.add(id); else openDetails.delete(id);
+}, true);
+$('#list').addEventListener('scroll', e => {
+  if (e.target.classList?.contains('scroll')) replyScroll[e.target.closest('.item').dataset.key] = e.target.scrollTop;
+}, true);
+
+function autoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight + 2, 260) + 'px'; }
+document.addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA') autoGrow(e.target); });
+
+$('#list').addEventListener('input', e => { if (e.target.id === 'reply-input') { drafts[e.target.closest('.item').dataset.key] = e.target.value; try { sessionStorage.setItem('room-drafts', JSON.stringify(drafts)); } catch (x) {} } });
+$('#list').addEventListener('submit', e => { e.preventDefault(); reply(e.target.closest('.item').dataset.key); });
+$('#list').addEventListener('keydown', e => {
+  if (e.target.id !== 'reply-input') return;
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.form.requestSubmit(); }
+  if (e.key === 'Escape') e.target.blur();
+});
+$('#list').addEventListener('focusout', e => { if (e.target.id === 'reply-input') setTimeout(() => { if (renderPending && !typing()) render(); }, 0); });
+
+$('#list').addEventListener('click', e => {
+  if (e.target.closest('[data-act="seen-all"]')) { markSeen(sessions); render(); return; }
+  const item = e.target.closest('.item'); if (!item) return;
+  if (e.target.closest('[data-act="jump"]')) return jump(item.dataset.key);
+  if (e.target.closest('[data-act="allow"]')) return decide(item.dataset.key, 'allow');
+  if (e.target.closest('[data-act="deny"]')) return decide(item.dataset.key, 'deny');
+  if (e.target.closest('[data-act="window"]')) return decide(item.dataset.key, 'window');
+  if (e.target.closest('[data-act="stop"]')) return stopSession(item.dataset.key);
+  if (e.target.closest('[data-act="listen"]')) return listen(item.dataset.key);
+  if (e.target.closest('[data-act="close"]')) return closeSession(item.dataset.key);
+  if (e.target.closest('[data-act="more"]')) {
+    const id = item.dataset.key + '|menu';
+    if (openDetails.has(id)) openDetails.delete(id); else openDetails.add(id);
+    return render();
+  }
+  if (e.target.closest('[data-act="new-here"]')) {
+    const s = sessions.find(x => x.key === item.dataset.key);
+    return openLauncher(s?.cwd, s?.vendor);
+  }
+  navRepo = item.dataset.repo;
+  const tab = e.target.closest('[data-tab]');
+  if (tab) { activeTab[item.dataset.repo] = tab.dataset.tab; render(); return; }
+  if (e.target.closest('.row')) { openRepo = openRepo === item.dataset.repo ? null : item.dataset.repo; render(); }
+});
+document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {
+  filter = b.dataset.filter;
+  document.querySelectorAll('[data-filter]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  render();
+}));
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || ['TEXTAREA', 'INPUT', 'SELECT'].includes(e.target.tagName)) return;
+  if (e.key === 'n') { e.preventDefault(); openLauncher(); return; }
+  if (!$('#launcher').hidden) return;
+  const items = [...document.querySelectorAll('#list .item')]; if (!items.length) return;
+  const byRepo = r => r ? document.querySelector(`.item[data-repo="${CSS.escape(r)}"]`) : null;
+  const curItem = byRepo(navRepo) || document.activeElement?.closest?.('.item') || byRepo(openRepo);
+  const cur = curItem?.dataset.key, curRepo = curItem?.dataset.repo;
+  const i = items.indexOf(curItem);
+  // The highlight is our own .cur class: WebKit rarely shows :focus-visible on script-focused buttons.
+  const focus = el => {
+    if (!el) return;
+    navRepo = el.dataset.repo;
+    items.forEach(x => x.classList.toggle('cur', x === el));
+    const r = el.querySelector('.row'); r?.focus(); r?.scrollIntoView({ block: 'nearest' });
+  };
+  if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); focus(items[Math.min(items.length - 1, i + 1)]); }
+  else if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); focus(items[Math.max(0, i - 1)]); }
+  else if (e.key === 'g') jump(cur);
+  else if (e.key === 'l' && cur) listen(cur);
+  else if (e.key === 'a') decide(cur, 'allow');
+  else if (e.key === 'd') decide(cur, 'deny');
+  else if (e.key === 'r' && cur) {
+    e.preventDefault();
+    if (openRepo !== curRepo) { openRepo = curRepo; render(); }
+    const ta = document.getElementById('reply-input');
+    if (ta) ta.focus(); else toast('This session cannot take a message from here. Open its window.', true);
+  }
+});
+
+/* ---------- new agent launcher ---------- */
+const L = { places: [], parents: [], options: [], sel: 0, target: 'window', parent: null, agent: 'claude', agents: [] };
+const FOLDER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+
+async function openLauncher(folder, agent) {
+  $('#launcher').hidden = false;
+  $('#new-agent').setAttribute('aria-expanded', 'true');
+  $('#l-search').value = ''; $('#l-prompt').value = '';
+  $('#l-search').focus();
+  try {
+    const res = await fetch('/api/places', { cache: 'no-store' });
+    const v = await res.json();
+    L.places = v.places; L.parents = v.parents; L.parent = L.parent || v.parents[0]?.path || null; L.agents = v.agents || [];
+  } catch (e) { toast('Could not load folders from the server', true); }
+  L.sel = 0;
+  if (typeof folder === 'string' && folder) {
+    const place = L.places.find(p => p.path === folder);
+    $('#l-search').value = place ? place.name : '';
+    drawLauncher();
+    L.sel = Math.max(0, L.options.findIndex(o => o.kind === 'place' && o.place.path === folder));
+    $('#l-prompt').focus();
+  }
+  setAgent(agent === 'claude' || agent === 'codex' ? agent : L.agent);
+}
+function closeLauncher() { $('#launcher').hidden = true; $('#new-agent').setAttribute('aria-expanded', 'false'); }
+document.addEventListener('mousedown', e => {
+  if (!$('#launcher').hidden && !e.target.closest('#launcher') && !e.target.closest('#new-agent')) closeLauncher();
+});
+
+function drawLauncher() {
+  const q = $('#l-search').value.trim();
+  const ql = q.toLowerCase();
+  let groups;
+  if (!q) {
+    groups = [['Open windows', L.places.filter(p => p.open)], ['Recent', L.places.filter(p => !p.open && p.used).slice(0, 6)]];
+  } else {
+    const hits = L.places.filter(p => (p.name + ' ' + p.where).toLowerCase().includes(ql))
+      .sort((a, b) => (b.name.toLowerCase().startsWith(ql) - a.name.toLowerCase().startsWith(ql)) || (b.open - a.open) || (b.used - a.used))
+      .slice(0, 12);
+    groups = [['Folders', hits]];
+  }
+  L.options = groups.flatMap(([, items]) => items.map(p => ({ kind: 'place', place: p })));
+  const exact = L.places.some(p => p.name.toLowerCase() === ql);
+  const canCreate = q && FOLDER_RE.test(q) && !exact && L.parents.length;
+  if (canCreate) L.options.push({ kind: 'create', name: q });
+  L.sel = Math.max(0, Math.min(L.sel, L.options.length - 1));
+
+  let i = 0, html = '';
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    html += `<div class="l-group">${label}</div>`;
+    for (const p of items) {
+      html += `<button type="button" class="l-item" role="option" data-i="${i}" aria-selected="${i === L.sel}">
+        <span class="n">${esc(p.name)}</span><span class="w">${esc(p.where)}</span>${p.open ? '<span class="tag">open window</span>' : ''}</button>`;
+      i++;
+    }
+  }
+  if (canCreate) {
+    const parents = L.parents.map(d => `<option value="${esc(d.path)}"${d.path === L.parent ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
+    html += `<div class="l-group">New folder</div>
+      <div class="l-item create" role="option" data-i="${i}" aria-selected="${i === L.sel}">
+        <span class="n">+ Create “${esc(q)}”</span><span class="w">in</span>
+        <select id="l-parent" aria-label="Parent folder">${parents}</select><span class="tag">git init</span></div>`;
+  } else if (q && !L.options.length) {
+    html += `<p class="l-empty">No folder matches. Use letters, digits, dots, dashes or underscores to create a new one.</p>`;
+  }
+  $('#l-list').innerHTML = html || '<p class="l-empty">No folders found.</p>';
+  $('#l-list [aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  // a folder that is already open defaults to its own window, anything else to a new window
+  const chosen = L.options[L.sel];
+  if (chosen && !L.targetTouched) setTarget(chosen.kind === 'place' && chosen.place.open && L.agent !== 'codex' ? 'window' : 'new-window', false);
+}
+
+function setAgent(a) {
+  L.agent = a;
+  document.querySelectorAll('#l-agent button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.agent === a)));
+  const targets = (L.agents.find(x => x.vendor === a) || {}).targets || ['window', 'new-window', 'terminal'];
+  const anyApp = L.agents.some(x => (x.targets || []).includes('app'));
+  document.querySelectorAll('#l-target button').forEach(b => {
+    // Codex always gets a window of its own, so no chat already open there can take the task
+    b.disabled = !targets.includes(b.dataset.target) || (a === 'codex' && b.dataset.target === 'window');
+    if (b.dataset.target === 'app') b.hidden = !anyApp;
+  });
+  if (a === 'codex' && L.target === 'window') setTarget('new-window', false);
+  if (!targets.includes(L.target)) setTarget('window', false);
+  L.targetTouched = false; drawLauncher();
+}
+
+function setTarget(t, touched = true) {
+  L.target = t; if (touched) L.targetTouched = true;
+  document.querySelectorAll('#l-target button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.target === t)));
+}
+
+async function launchAgent() {
+  const chosen = L.options[L.sel];
+  if (!chosen) return toast('Pick a folder first', true);
+  const body = { target: L.target, prompt: $('#l-prompt').value, agent: L.agent };
+  if (chosen.kind === 'create') { body.newName = chosen.name; body.parent = $('#l-parent')?.value || L.parent; }
+  else body.folder = chosen.place.path;
+  $('#l-go').disabled = true;
+  try {
+    const res = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Control-Room': '1' }, body: JSON.stringify(body) });
+    const out = await res.json();
+    toast(out.message, !out.ok);
+    if (out.ok) { closeLauncher(); L.targetTouched = false; }
+  } catch (e) { toast('Starting failed: the server did not answer', true); }
+  $('#l-go').disabled = false;
+}
+
+$('#new-agent').addEventListener('click', () => $('#launcher').hidden ? openLauncher() : closeLauncher());
+$('#l-close').addEventListener('click', closeLauncher);
+$('#l-go').addEventListener('click', launchAgent);
+$('#l-search').addEventListener('input', () => { L.sel = 0; L.targetTouched = false; drawLauncher(); });
+$('#l-list').addEventListener('click', e => {
+  if (e.target.closest('select')) return;
+  const item = e.target.closest('[data-i]'); if (!item) return;
+  L.sel = Number(item.dataset.i); L.targetTouched = false; drawLauncher(); $('#l-prompt').focus();
+});
+$('#l-list').addEventListener('change', e => { if (e.target.id === 'l-parent') L.parent = e.target.value; });
+$('#l-agent').addEventListener('click', e => { const b = e.target.closest('[data-agent]'); if (b) setAgent(b.dataset.agent); });
+$('#l-target').addEventListener('click', e => { const b = e.target.closest('[data-target]'); if (b) setTarget(b.dataset.target); });
+$('#launcher').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeLauncher(); return; }
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); launchAgent(); return; }
+  if (e.target.id === 'l-search') {
+    if (e.key === 'ArrowDown') { e.preventDefault(); L.sel = Math.min(L.options.length - 1, L.sel + 1); L.targetTouched = false; drawLauncher(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); L.sel = Math.max(0, L.sel - 1); L.targetTouched = false; drawLauncher(); }
+    else if (e.key === 'Enter') { e.preventDefault(); $('#l-prompt').focus(); }
+  }
+});
+
+refresh();
+setInterval(refresh, 2000);
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

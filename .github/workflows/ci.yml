@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Lint
+        run: |
+          python -m pip install pyflakes
+          python -m pyflakes agent_control_room tests packaging/build.py packaging/launcher.py
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Smoke test (no agents installed on the runner)
+        run: |
+          python -m agent_control_room --version
+          python -m agent_control_room --once

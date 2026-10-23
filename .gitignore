@@ -1,0 +1,20 @@
+# never commit secrets
+.env
+.env.*
+
+# local-only
+.tmp/
+dist/
+CLAUDE.local.md
+.claude/settings.local.json
+
+# python
+__pycache__/
+*.pyc
+.venv/
+build/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-control-room"
+dynamic = ["version"]
+description = "One local overview of every AI coding agent session on your computer: who needs you, for what, and since when."
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+requires-python = ">=3.9"
+authors = [{name = "Alice Labs"}]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Environment :: Web Environment",
+    "Topic :: Software Development",
+]
+dependencies = []  # the room itself is standard library only
+
+[project.optional-dependencies]
+app = ["pywebview>=5"]          # the room in its own window; without it the room opens in the browser
+build = ["pyinstaller>=6", "pyflakes"]
+
+[project.scripts]
+agent-control-room = "agent_control_room.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/alicelabs-ai/agent-control-room-oss"
+Issues = "https://github.com/alicelabs-ai/agent-control-room-oss/issues"
+
+[tool.setuptools]
+packages = ["agent_control_room", "agent_control_room.agents", "agent_control_room.hooks", "agent_control_room.system"]
+
+[tool.setuptools.package-data]
+agent_control_room = ["web/*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "agent_control_room.__version__"}
