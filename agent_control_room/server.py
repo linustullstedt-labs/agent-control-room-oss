@@ -31,7 +31,7 @@ DEFAULT_PORT = 7788
 POLL_SECONDS = 2.0
 PLACES_TTL_SECONDS = 30
 APPROVAL_TTL_SECONDS = 700  # a little longer than the hook waits
-REPO_URL = "https://github.com/alicelabs-ai/agent-control-room-oss"
+REPO_URL = "https://github.com/linustullstedt-labs/agent-control-room-oss"
 
 
 # ---------------------------------------------------------------- state store

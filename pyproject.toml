@@ -29,8 +29,8 @@ build = ["pyinstaller>=6", "pyflakes"]
 agent-control-room = "agent_control_room.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/alicelabs-ai/agent-control-room-oss"
-Issues = "https://github.com/alicelabs-ai/agent-control-room-oss/issues"
+Homepage = "https://github.com/linustullstedt-labs/agent-control-room-oss"
+Issues = "https://github.com/linustullstedt-labs/agent-control-room-oss/issues"
 
 [tool.setuptools]
 packages = ["agent_control_room", "agent_control_room.agents", "agent_control_room.hooks", "agent_control_room.system"]

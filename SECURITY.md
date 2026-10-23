@@ -17,5 +17,5 @@ Code permission prompts when you switch "Approve here" on. Its safety rules:
 ## Reporting a vulnerability
 
 Please do not open a public issue. Use GitHub's
-[private vulnerability reporting](https://github.com/alicelabs-ai/agent-control-room-oss/security/advisories/new) for
+[private vulnerability reporting](https://github.com/linustullstedt-labs/agent-control-room-oss/security/advisories/new) for
 this repository. We aim to answer within a week.

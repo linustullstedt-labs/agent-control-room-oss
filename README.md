@@ -25,7 +25,7 @@ It is an observer, not another chat client: the agents keep running where they a
 
 ## Install
 
-Download the installer for your system from the [latest release](https://github.com/alicelabs-ai/agent-control-room-oss/releases/latest):
+Download the installer for your system from the [latest release](https://github.com/linustullstedt-labs/agent-control-room-oss/releases/latest):
 
 | System | File | First start |
 |---|---|---|
@@ -36,7 +36,7 @@ Download the installer for your system from the [latest release](https://github.
 Or run it from source with Python 3.9 or newer (no dependencies needed; `pywebview` adds the app window):
 
 ```sh
-git clone https://github.com/alicelabs-ai/agent-control-room-oss
+git clone https://github.com/linustullstedt-labs/agent-control-room-oss
 cd agent-control-room-oss
 python -m pip install -e ".[app]"   # or skip this and use --browser
 agent-control-room                  # or: python -m agent_control_room

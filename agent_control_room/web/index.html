@@ -242,7 +242,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 0 5px; border-radius: 
       <a class="btn update" id="update-btn" hidden target="_blank" rel="noopener" title="Download the new version">Update</a>
       <span id="version"></span></span>
     <span><a class="footlink" id="suggest" target="_blank" rel="noopener"
-      href="https://github.com/alicelabs-ai/agent-control-room-oss/issues/new">Suggest a feature or report a bug</a></span>
+      href="https://github.com/linustullstedt-labs/agent-control-room-oss/issues/new">Suggest a feature or report a bug</a></span>
     <span id="hook-remove-wrap" hidden><button type="button" class="footlink" id="hook-remove">Remove approval hook</button></span>
   </footer>
 </div>
@@ -556,7 +556,7 @@ async function refresh() {
     PLATFORM = snap.platform || PLATFORM;
     $('#version').textContent = snap.version ? `· version ${snap.version}` : '';
     // suggestions become GitHub issues in the room's repo; the version says which build a bug was seen on
-    $('#suggest').href = (snap.repoUrl || 'https://github.com/alicelabs-ai/agent-control-room-oss') + '/issues/new?' + new URLSearchParams({
+    $('#suggest').href = (snap.repoUrl || 'https://github.com/linustullstedt-labs/agent-control-room-oss') + '/issues/new?' + new URLSearchParams({
       body: `What would you like, or what went wrong?\n\n\n\nSent from Agent Control Room ${snap.version || ''} on ${snap.platform || '?'}`}).toString();
     $('#sw-approve').setAttribute('aria-checked', String(approvals.on));
     $('#hook-remove-wrap').hidden = !approvals.hookInstalled;
